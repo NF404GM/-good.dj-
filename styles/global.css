@@ -1,0 +1,47 @@
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-interface);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Typography Refinement ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-interface);
+  letter-spacing: var(--tracking-tight);
+}
+
+.font-mono, .machine-data {
+  font-family: var(--font-data);
+}
+
+/* ── Custom Scrollbar (§Hardware Feel) ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Utility Selections ── */
+::selection {
+  background: var(--color-signal-nominal);
+  color: #000;
+}

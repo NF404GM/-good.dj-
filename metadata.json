@@ -1,0 +1,5 @@
+{
+  "name": "good.DJ",
+  "description": "A professional web-based DJ application with industry-standard MIDI controller support, real-time stem separation simulation, and a tactile HUD interface.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,54 @@
+﻿
+> good.dj@0.0.0 lint
+> eslint . --ext .ts,.tsx
+
+
+C:\Users\tahme\OneDrive\Desktop\good.dj\server\dist\index.cjs
+   39:84  error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+   69:5   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+   87:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+   89:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  115:9   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  166:5   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  175:7   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  183:7   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  203:7   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  208:7   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  265:14  error  The array literal notation [] is preferable                            @typescript-eslint/no-array-constructor
+  296:7   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  324:7   error  'skip' is assigned a value but never used                              @typescript-eslint/no-unused-vars
+  326:7   error  'Debug' is assigned a value but never used                             @typescript-eslint/no-unused-vars
+  333:7   error  'warnOnce' is assigned a value but never used                          @typescript-eslint/no-unused-vars
+  336:7   error  'getRuntime' is assigned a value but never used                        @typescript-eslint/no-unused-vars
+  337:7   error  'createParam' is assigned a value but never used                       @typescript-eslint/no-unused-vars
+  338:9   error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  363:9   error  'path2' is assigned a value but never used                             @typescript-eslint/no-unused-vars
+  363:17  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  428:37  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  442:17  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  443:30  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  444:27  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  445:29  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  446:28  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  447:27  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  448:25  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  450:18  error  A `require()` style import is forbidden                                @typescript-eslint/no-require-imports
+  507:12  error  'err' is defined but never used                                        @typescript-eslint/no-unused-vars
+  514:83  error  'stderr' is defined but never used                                     @typescript-eslint/no-unused-vars
+  562:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  573:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  588:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  605:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  613:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  626:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+  636:14  error  'e' is defined but never used                                          @typescript-eslint/no-unused-vars
+
+C:\Users\tahme\OneDrive\Desktop\good.dj\services\analysis.worker.js
+  23:24  error  'sampleRate' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\tahme\OneDrive\Desktop\good.dj\test_load.cjs
+  1:19  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+Γ£û 40 problems (40 errors, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f0f0f" />
+  <meta name="description"
+    content="good.DJ — A professional browser-native DJ application with MIDI controller support, real-time stem control, and a tactile hardware interface." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>good.DJ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            canvas: 'var(--canvas)',
+            surface: {
+              idle: 'var(--surface-idle)',
+              active: 'var(--surface-active)',
+              raised: 'var(--surface-raised)',
+            },
+            text: {
+              primary: 'var(--text-primary)',
+              secondary: 'var(--text-secondary)',
+              data: 'var(--text-data)',
+              berry: 'var(--text-berry)',
+              mono: 'var(--text-mono)',
+            },
+            signal: {
+              clipping: 'var(--signal-clipping)',
+              nominal: 'var(--signal-nominal)',
+              transient: 'var(--signal-transient)',
+              sync: 'var(--signal-sync)',
+            },
+            stem: {
+              drums: 'var(--stem-drums)',
+              bass: 'var(--stem-bass)',
+              vocals: 'var(--stem-vocals)',
+              harmonic: 'var(--stem-harmonic)',
+            },
+            hw: {
+              sand: 'var(--hw-sand)',
+              olive: 'var(--hw-olive)',
+              warm: 'var(--hw-warm)',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Roboto Mono', 'monospace'],
+          },
+          animation: {
+            'spin-fast': 'spin 0.5s linear infinite',
+            'spin-blur': 'spin-blur 0.2s linear infinite',
+            'dot-pulse': 'dot-pulse 1200ms ease-in-out infinite',
+            'deck-live': 'deck-live 380ms forwards ease-out',
+          },
+          keyframes: {
+            'spin-blur': {
+              '0%': { transform: 'rotate(0deg) scale(1)' },
+              '50%': { transform: 'rotate(180deg) scale(1.02)' },
+              '100%': { transform: 'rotate(360deg) scale(1)' },
+            },
+            'dot-pulse': {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0.30' },
+            },
+            'deck-live': {
+              '0%': { boxShadow: '0 0 0px rgba(16, 185, 129, 0)' },
+              '40%': { boxShadow: '0 0 24px rgba(16, 185, 129, 0.70)' },
+              '100%': { boxShadow: '0 0 12px rgba(16, 185, 129, 0.35)' },
+            }
+          },
+          borderRadius: {
+            'btn-sm': 'var(--radius-btn-sm)',
+            'btn-lg': 'var(--radius-btn-lg)',
+            'panel': 'var(--radius-panel)',
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Global styles moved to styles/global.css and tokens.css via entry point -->
+
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

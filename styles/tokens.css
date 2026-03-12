@@ -1,0 +1,68 @@
+:root {
+  /* ── good. mode BASE PALETTE (§7.2) ── */
+  --color-bg-base:        #0f0f0f;  /* matte black */
+  --color-bg-panel:       #1a1a1a;  /* panel surface */
+  --color-bg-elevated:    #222222;  /* raised elements */
+  --color-bg-input:       #1f1f1f;  /* charcoal */
+  
+  /* ── TEXT & TYPOGRAPHY (§8) ── */
+  --color-text-primary:   #fafafa;  /* pure off-white */
+  --color-text-secondary: #d1cbc1;  /* boosted warm gray */
+  --color-text-data:     #b0b0b0;  /* boosted machine text */
+  --color-text-accent:    #e0d9d0;  /* sand highlight */
+  
+  /* ── SIGNAL & FUNCTIONAL (§7.4) ── */
+  --color-signal-nominal: #10b981;  /* emerald green */
+  --color-signal-sync:    #3b82f6;  /* precision blue */
+  --color-signal-peak:    #ef4444;  /* clip red */
+  --color-signal-warn:    #f59e0b;  /* amber caution */
+  
+  /* ── STEM IDENTITIES (§10.1) ── */
+  --color-stem-drums:     #3b82f6;  /* drum blue */
+  --color-stem-bass:      #8b5cf6;  /* bass purple */
+  --color-stem-vocals:    #f59e0b;  /* vocal amber */
+  --color-stem-harmonic:  #10b981;  /* harmonic emerald */
+
+  /* ── BORDERS & INTERFACE ── */
+  --color-border-subtle:  rgba(255, 255, 255, 0.05);
+  --color-border-bold:    #bfb7ad;
+  
+  /* ── TYPOGRAPHY TOKENS ── */
+  --font-interface: 'Inter', sans-serif;
+  --font-data:      'JetBrains Mono', 'Roboto Mono', monospace;
+  --tracking-tight: -0.05em;
+  --tracking-wide:  0.15em;
+  
+  /* ── RADIUS ── */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  /* ── ANIMATION TOKENS (§12) ── */
+  --spring-snappy:   { "type": "spring", "stiffness": 500, "damping": 30 };
+  --spring-bouncy:   { "type": "spring", "stiffness": 400, "damping": 15 };
+  --spring-lofi:     { "type": "spring", "stiffness": 260, "damping": 20 };
+  
+  --transition-ui:   200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── TACTILE DEPTH ── */
+  --shadow-tactile-out:  0 2px 0 0 rgba(0,0,0,0.8), 0 4px 8px rgba(0,0,0,0.4);
+  --shadow-tactile-in:   inset 0 1px 2px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.05);
+
+  /* ── BACKWARD COMPATIBILITY (Temporary) ── */
+  --canvas: var(--color-bg-base);
+  --surface-idle: var(--color-bg-panel);
+  --surface-active: var(--color-bg-elevated);
+  --surface-raised: var(--color-bg-elevated);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-data: var(--color-text-data);
+  --signal-clipping: var(--color-signal-peak);
+  --signal-nominal: var(--color-signal-nominal);
+  --signal-sync: var(--color-signal-sync);
+  --stem-drums: var(--color-stem-drums);
+  --stem-bass: var(--color-stem-bass);
+  --stem-vocals: var(--color-stem-vocals);
+  --stem-harmonic: var(--color-stem-harmonic);
+}

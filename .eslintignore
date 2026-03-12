@@ -1,0 +1,6 @@
+server/dist/
+dist/
+dist-electron/
+*.cjs
+vitest.config.ts
+vite.config.ts
