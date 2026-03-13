@@ -146,21 +146,22 @@ function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { ke
         let validFrames = 0;
 
         for (let i = 0; i < numFrames; i++) {
+            let frame: any = null;
             let windowed: any = null;
             let spectrum: any = null;
             let peaks: any = null;
             let hpcp: any = null;
 
             try {
-                const frame = frames.get(i);
+                frame = frames.get(i);
                 windowed = essentia.Windowing(frame, true, frameSize, 'hann', 0, true);
                 spectrum = essentia.Spectrum(windowed.frame, frameSize);
                 peaks = essentia.SpectralPeaks(
                     spectrum.spectrum,
-                    10000, // maxFrequency
-                    5000,  // maxPeaks
+                    5000,  // maxFrequency
+                    60,    // maxPeaks
                     0,     // magnitudeThreshold
-                    40,    // minFrequency
+                    100,   // minFrequency
                     'height', // orderBy
                     sampleRate
                 );
@@ -190,6 +191,7 @@ function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { ke
                 }
             } finally {
                 // Cleanup frame-level vectors
+                frame?.delete?.();
                 windowed?.frame?.delete?.();
                 spectrum?.spectrum?.delete?.();
                 peaks?.frequencies?.delete?.();
@@ -318,7 +320,7 @@ function ensureWorker(): Worker {
     worker = new Worker(new URL('./analysis.worker.ts', import.meta.url), { type: 'module' });
 
     worker.onmessage = (e) => {
-        const { id, success, bpm, key, scale, beats, error } = e.data;
+        const { id, success, bpm, key, scale, beats, keyConfidence, error } = e.data;
         const resolver = pendingAnalyses.get(id);
         if (resolver) {
             if (success) {
@@ -327,7 +329,7 @@ function ensureWorker(): Worker {
                     key,
                     scale,
                     beats: beats || [],
-                    keyConfidence: 1.0
+                    keyConfidence: keyConfidence ?? 0
                 });
             } else {
                 console.error(`[TrackAnalyzer] Worker error for ${id}:`, error);
@@ -362,18 +364,13 @@ async function analyzeTrackDirect(buffer: AudioBuffer): Promise<TrackAnalysisRes
     }
 }
 
-async function analyzeTrackInWorker(buffer: AudioBuffer, nativeKey: string | null): Promise<TrackAnalysisResult> {
+async function analyzeTrackInWorker(buffer: AudioBuffer): Promise<TrackAnalysisResult> {
     const analysisId = `analysis-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const analysisWorker = ensureWorker();
     const monoSignal = audioBufferToMono(buffer);
 
     return new Promise((resolve) => {
-        pendingAnalyses.set(analysisId, (res) => {
-            if (nativeKey) {
-                res.key = nativeKey;
-            }
-            resolve(res);
-        });
+        pendingAnalyses.set(analysisId, resolve);
 
         console.log(`[TrackAnalyzer] Queueing analysis in worker: ${analysisId}`);
         analysisWorker.postMessage({
@@ -390,25 +387,10 @@ async function analyzeTrackInWorker(buffer: AudioBuffer, nativeKey: string | nul
  */
 export async function analyzeTrack(buffer: AudioBuffer, filePath?: string, options?: AnalyzeTrackOptions): Promise<TrackAnalysisResult> {
     return queue.add(async () => {
-        let nativeKey: string | null = null;
-        if (window.gooddj && filePath) {
-            try {
-                console.log(`[TrackAnalyzer] Requesting native key analysis for: ${filePath}`);
-                nativeKey = await window.gooddj.audio.analyzeKey(filePath);
-                console.log(`[TrackAnalyzer] Native key found: ${nativeKey}`);
-            } catch (err) {
-                console.warn('[TrackAnalyzer] Native key analysis failed, falling back to Essentia:', err);
-            }
-        }
-
         if (options?.mode === 'worker') {
-            return analyzeTrackInWorker(buffer, nativeKey);
+            return analyzeTrackInWorker(buffer);
         }
 
-        const result = await analyzeTrackDirect(buffer);
-        if (nativeKey) {
-            result.key = nativeKey;
-        }
-        return result;
+        return analyzeTrackDirect(buffer);
     }) as Promise<TrackAnalysisResult>;
 }

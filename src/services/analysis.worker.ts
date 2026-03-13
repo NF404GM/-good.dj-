@@ -48,11 +48,12 @@ function resampleTo44100(signal: Float32Array, sampleRate: number) {
 }
 
 self.onmessage = async (e: MessageEvent) => {
-    const { audioData, sampleRate, id } = e.data;
+    const { audioData, sampleRate = 44100, id } = e.data;
 
     try {
         const essentiaInstance = await initEssentia();
         const signal = resampleTo44100(new Float32Array(audioData), sampleRate);
+        const analysisSampleRate = 44100;
         const vectorSignal = essentiaInstance.arrayToVector(signal);
 
         try {
@@ -81,12 +82,12 @@ self.onmessage = async (e: MessageEvent) => {
                     spectrum = essentiaInstance.Spectrum(windowed.frame, frameSize);
                     peaks = essentiaInstance.SpectralPeaks(
                         spectrum.spectrum,
-                        10000,
                         5000,
+                        60,
                         0,
-                        40,
+                        100,
                         'height',
-                        44100
+                        analysisSampleRate
                     );
 
                     if (peaks.frequencies.size() > 0) {
@@ -127,6 +128,7 @@ self.onmessage = async (e: MessageEvent) => {
 
             let key = '1A';
             let scale = 'minor';
+            let keyConfidence = 0;
 
             if (frameCount > 0) {
                 for (let j = 0; j < 12; j += 1) {
@@ -137,6 +139,7 @@ self.onmessage = async (e: MessageEvent) => {
                 try {
                     const keyResult = essentiaInstance.Key(avgHpcpVec);
                     scale = keyResult.scale;
+                    keyConfidence = keyResult.strength ?? 0;
                     key = CAMELOT_MAP[`${keyResult.key} ${keyResult.scale}`]
                         || `${keyResult.key}${keyResult.scale === 'minor' ? 'm' : ''}`;
                 } finally {
@@ -145,15 +148,23 @@ self.onmessage = async (e: MessageEvent) => {
             }
 
             let beats: number[] = [];
+            let beatVec: any = null;
             try {
-                const beatResult = essentiaInstance.BeatTrackerDegara(vectorSignal);
+                const maxBeatSamples = analysisSampleRate * 90;
+                const beatSignal = signal.length > maxBeatSamples
+                    ? signal.slice(0, maxBeatSamples)
+                    : signal;
+                beatVec = essentiaInstance.arrayToVector(beatSignal);
+                const beatResult = essentiaInstance.BeatTrackerDegara(beatVec);
                 beats = Array.from(essentiaInstance.vectorToArray(beatResult.ticks) as Float32Array);
                 beatResult.ticks?.delete?.();
             } catch {
                 beats = [];
+            } finally {
+                beatVec?.delete?.();
             }
 
-            self.postMessage({ id, success: true, bpm, key, scale, beats });
+            self.postMessage({ id, success: true, bpm, key, scale, keyConfidence, beats });
         } finally {
             vectorSignal.delete();
         }
