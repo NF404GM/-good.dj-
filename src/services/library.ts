@@ -111,12 +111,21 @@ export class LibraryService {
     }
 
     public getTrackUrl(track: LibraryTrack): string {
-        if (window.gooddj && isAbsoluteTrackPath(track.filePath)) {
-            return `file:///${track.filePath!.replace(/\\/g, '/').replace(/^\//, '')}`;
+        const p = track.filePath ?? '';
+
+        if (p.startsWith('http://') || p.startsWith('https://')) {
+            return p;
         }
 
-        const safePath = track.filePath?.startsWith('/') ? track.filePath : `/${track.filePath ?? ''}`;
-        return `${SERVER_BASE}${safePath}`;
+        if (typeof window !== 'undefined' && window.gooddj) {
+            return `gooddj-file://${encodeURIComponent(p)}`;
+        }
+
+        if (p.startsWith('/uploads/') || p.startsWith('uploads/')) {
+            return `${SERVER_BASE}/${p.replace(/^\//, '')}`;
+        }
+
+        return `${SERVER_BASE}/api/file?path=${encodeURIComponent(p)}`;
     }
 
     public async getTrackBlob(id: string): Promise<Blob | null> {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, ChildProcess } from 'child_process';
@@ -27,6 +27,18 @@ const GUMROAD_PRODUCT_ID = process.env.VITE_GUMROAD_PRODUCT_ID ?? '';
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
+
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: 'gooddj-file',
+        privileges: {
+            secure: true,
+            standard: true,
+            stream: true,
+            corsEnabled: true,
+        },
+    },
+]);
 
 function getUserDataPath(): string {
     return app.getPath('userData');
@@ -173,6 +185,17 @@ function setupLicenseIPC(): void {
 }
 
 app.whenReady().then(async () => {
+    protocol.registerFileProtocol('gooddj-file', (request, callback) => {
+        try {
+            const encodedPath = request.url.replace('gooddj-file://', '');
+            const filePath = decodeURIComponent(encodedPath);
+            callback({ path: filePath });
+        } catch (err) {
+            console.error('[Protocol] gooddj-file error:', err);
+            callback({ error: -2 });
+        }
+    });
+
     setupLicenseIPC();
     await startBackend();
     createWindow();
