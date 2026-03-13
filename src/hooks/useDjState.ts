@@ -1,775 +1,623 @@
-import React, { useState, useEffect, useCallback, useReducer, useRef, useContext, createContext } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, createContext, useContext, useRef } from 'react';
 import { produce } from 'immer';
-import { GlobalDjState, DeckAction, DeckState, StemType, EffectType, TrackData, LibraryState, LibraryTrack } from '../types';
-import { MOCK_LIBRARY } from '../constants';
-import { MidiService } from '../services/midi';
+import {
+    GlobalDjState,
+    DeckAction,
+    DeckState,
+    StemType,
+    EffectType,
+    LibraryTrack,
+    Playlist,
+    StemPlaybackMode,
+} from '../types';
 import { AudioEngine } from '../services/audio';
-import { goodDB } from '../services/library';
-import { analyzeTrack, TrackAnalysisResult } from '../services/trackAnalyzer';
-import { parseRekordboxXml } from '../services/rekordbox';
+import { MidiService } from '../services/midi';
+import { LibraryService } from '../services/library';
 
-const createInitialDeck = (id: string, track: TrackData | null): DeckState => ({
+const DEFAULT_STEMS = (): DeckState['stems'] => ({
+    [StemType.LOW]: { active: true, volume: 1, param: 0.5 },
+    [StemType.BASS]: { active: true, volume: 1, param: 0.5 },
+    [StemType.MID]: { active: true, volume: 1, param: 0.5 },
+    [StemType.HIGH]: { active: true, volume: 1, param: 0.5 },
+});
+
+const DEFAULT_EQ = () => ({ trim: 0.75, high: 0.75, mid: 0.75, low: 0.75 });
+
+const DEFAULT_FX = (): DeckState['fx'] => ({
+    active: false,
+    activeType: EffectType.REVERB,
+    wet: 0.3,
+    knob1: 0.5,
+    knob2: 0.5,
+});
+
+const createDeck = (id: string): DeckState => ({
     id,
-    track,
+    track: null,
     hasAudioBuffer: false,
     isPlaying: false,
     isLoading: false,
     progress: 0,
     pitch: 0,
-    pitchRange: 0.08, // 8% Default
+    pitchRange: 0.08,
     level: 0,
-    channelVolume: 0.8,
-    stems: {
-        [StemType.LOW]: { active: true, volume: 1, param: 0 },
-        [StemType.BASS]: { active: true, volume: 1, param: 0.5 },
-        [StemType.MID]: { active: true, volume: 1, param: 0.5 },
-        [StemType.HIGH]: { active: true, volume: 1, param: 0.5 },
-    },
-    eq: { trim: 0.75, high: 0.5, mid: 0.5, low: 0.5 },
-    fx: { active: false, activeType: EffectType.DELAY, wet: 0.5, knob1: 0.5, knob2: 0.5 },
-    cuePoints: Array(8).fill(null),
+    stems: DEFAULT_STEMS(),
+    eq: DEFAULT_EQ(),
+    fx: DEFAULT_FX(),
+    cuePoints: [null, null, null, null, null, null, null, null],
     waveformData: null,
     activeLoop: null,
     gridOffset: 0,
     keyLock: false,
     keyShift: 0,
     color: 0.5,
+    channelVolume: 1,
     isSynced: false,
-    stemMode: 'filters',
+    stemMode: 'filters' as StemPlaybackMode,
     isSeparatingStems: false,
 });
 
-// Load saved mappings (guarded for incognito / restricted contexts)
-let initialMappings: Record<string, any> = {};
-try {
-    const savedMappings = localStorage.getItem('good_dj_midi_map');
-    if (savedMappings) initialMappings = JSON.parse(savedMappings);
-} catch { /* localStorage unavailable */ }
-
-const initialLibrary: LibraryState = {
-    tracks: [],
-    playlists: [],
-    isInitialized: false
-};
-
-export const initialState: GlobalDjState = {
+const INITIAL_STATE: GlobalDjState = {
     activeDeckId: null,
     crossfader: 50,
     isRecording: false,
     recordingDuration: 0,
     settings: {
         isOpen: false,
-        audioOutputId: 'default',
-        midiMappings: initialMappings
+        audioOutputId: '',
+        midiMappings: {},
     },
-    library: initialLibrary,
+    library: {
+        tracks: [],
+        playlists: [],
+        isInitialized: false,
+    },
     decks: {
-        A: createInitialDeck('A', null),
-        B: createInitialDeck('B', null),
+        A: createDeck('A'),
+        B: createDeck('B'),
     },
 };
 
+function djReducer(state: GlobalDjState, action: DeckAction): GlobalDjState {
+    return produce(state, (draft) => {
+        switch (action.type) {
 
-
-export const djReducer = (state: GlobalDjState, action: DeckAction): GlobalDjState => produce(state, (draft: GlobalDjState) => {
-    switch (action.type) {
-        case 'TOGGLE_PLAY': {
-            const deck = draft.decks[action.deckId as 'A' | 'B'];
-            if (!deck.track || !deck.hasAudioBuffer) return;
-            draft.activeDeckId = action.deckId;
-            deck.isPlaying = !deck.isPlaying;
-            break;
-        }
-        case 'SET_PLAYING':
-            draft.decks[action.deckId as 'A' | 'B'].isPlaying = action.value;
-            break;
-        case 'SYNC_DECK':
-            draft.activeDeckId = action.deckId;
-            draft.decks[action.deckId as 'A' | 'B'].isSynced = true;
-            break;
-
-        case 'TOGGLE_SETTINGS':
-            draft.settings.isOpen = !draft.settings.isOpen;
-            break;
-        case 'SET_AUDIO_OUTPUT':
-            draft.settings.audioOutputId = action.deviceId;
-            break;
-        case 'SET_LOADING':
-            draft.decks[action.deckId as 'A' | 'B'].isLoading = action.isLoading;
-            break;
-        case 'TRACK_ENDED':
-            draft.decks[action.deckId as 'A' | 'B'].isPlaying = false;
-            draft.decks[action.deckId as 'A' | 'B'].progress = 1.0;
-            break;
-        case 'SET_CHANNEL_VOLUME':
-            draft.decks[action.deckId as 'A' | 'B'].channelVolume = action.value;
-            break;
-        case 'SET_PROGRESS':
-            draft.decks[action.deckId as 'A' | 'B'].progress = action.value;
-            break;
-        case 'SEEK_POSITION':
-            draft.decks[action.deckId as 'A' | 'B'].progress = action.value;
-            break;
-        case 'SET_LEVEL':
-            draft.decks[action.deckId as 'A' | 'B'].level = action.level;
-            break;
-        case 'SET_VOLUME':
-            draft.decks[action.deckId as 'A' | 'B'].stems[action.stem].volume = action.value;
-            break;
-        case 'TOGGLE_STEM': {
-            const stem = draft.decks[action.deckId as 'A' | 'B'].stems[action.stem];
-            stem.active = !stem.active;
-            break;
-        }
-        case 'SET_STEM_PARAM':
-            draft.decks[action.deckId as 'A' | 'B'].stems[action.stem].param = action.value;
-            break;
-        case 'SET_EQ':
-            draft.decks[action.deckId as 'A' | 'B'].eq[action.band] = action.value;
-            break;
-        case 'SET_COLOR_FILTER':
-            draft.decks[action.deckId as 'A' | 'B'].color = action.value;
-            break;
-
-        case 'TOGGLE_FX': {
-            const fx = draft.decks[action.deckId as 'A' | 'B'].fx;
-            fx.active = !fx.active;
-            break;
-        }
-        case 'SET_FX_WET':
-            draft.decks[action.deckId as 'A' | 'B'].fx.wet = action.value;
-            break;
-        case 'SET_FX_TYPE':
-            draft.decks[action.deckId as 'A' | 'B'].fx.activeType = action.effectType;
-            break;
-        case 'SET_FX_PARAM':
-            const fx = draft.decks[action.deckId as 'A' | 'B'].fx;
-            if (action.knob === 1) fx.knob1 = action.value;
-            else fx.knob2 = action.value;
-            break;
-
-        case 'SET_CUE':
-            draft.decks[action.deckId as 'A' | 'B'].cuePoints[action.index] = draft.decks[action.deckId as 'A' | 'B'].progress;
-            break;
-        case 'DELETE_CUE':
-            draft.decks[action.deckId as 'A' | 'B'].cuePoints[action.index] = null;
-            break;
-        case 'TRIGGER_CUE': {
-            const val = draft.decks[action.deckId as 'A' | 'B'].cuePoints[action.index];
-            if (val !== null) draft.decks[action.deckId as 'A' | 'B'].progress = val;
-            break;
-        }
-        case 'CUE_MASTER':
-            draft.decks[action.deckId as 'A' | 'B'].isPlaying = false;
-            break;
-        case 'LOOP_TRACK':
-            draft.decks[action.deckId as 'A' | 'B'].activeLoop = action.beats;
-            break;
-        case 'LOOP_HALVE': {
-            const deck = draft.decks[action.deckId as 'A' | 'B'];
-            if (deck.activeLoop !== null && deck.activeLoop > 0.25) {
-                deck.activeLoop = deck.activeLoop / 2;
+            case 'TOGGLE_PLAY': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.track || !deck.hasAudioBuffer) break;
+                const newIsPlaying = !deck.isPlaying;
+                deck.isPlaying = newIsPlaying;
+                if (newIsPlaying) {
+                    AudioEngine.play(action.deckId);
+                } else {
+                    AudioEngine.pause(action.deckId);
+                }
+                break;
             }
-            break;
-        }
-        case 'LOOP_DOUBLE': {
-            const deck = draft.decks[action.deckId as 'A' | 'B'];
-            if (deck.activeLoop !== null) {
-                deck.activeLoop = deck.activeLoop * 2;
+
+            case 'SET_PLAYING': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isPlaying = action.value;
+                break;
             }
-            break;
-        }
 
-        case 'LOAD_TRACK': {
-            const d = draft.decks[action.deckId as 'A' | 'B'];
-            d.track = action.track;
-            d.hasAudioBuffer = action.hasAudioBuffer ?? false;
-            d.waveformData = null;
-            d.isPlaying = false;
-            d.progress = 0;
-            d.cuePoints = Array(8).fill(null);
-            d.eq = { trim: 0.75, high: 0.5, mid: 0.5, low: 0.5 };
-            d.gridOffset = 0;
-            d.keyLock = false;
-            d.keyShift = 0;
-            d.color = 0.5;
-            d.pitch = 0;
-            d.channelVolume = 0.8;
-            d.isSynced = false;
-            d.stemMode = 'filters';
-            d.isSeparatingStems = false;
-            break;
-        }
-        case 'EJECT_TRACK':
-            draft.decks[action.deckId as 'A' | 'B'] = createInitialDeck(action.deckId, null);
-            break;
-
-        case 'DOUBLE_DECK': {
-            const targetId = action.deckId as 'A' | 'B';
-            const sourceId = targetId === 'A' ? 'B' : 'A';
-            const source = draft.decks[sourceId];
-            if (!source.track) return;
-            const target = draft.decks[targetId];
-            target.track = source.track;
-            target.hasAudioBuffer = source.hasAudioBuffer;
-            target.waveformData = source.waveformData;
-            target.pitch = source.pitch;
-            target.gridOffset = source.gridOffset;
-            target.cuePoints = [...source.cuePoints];
-            target.isPlaying = false;
-            break;
-        }
-
-        case 'SET_WAVEFORM':
-            draft.decks[action.deckId as 'A' | 'B'].waveformData = action.data;
-            break;
-        case 'SET_STEMS_LOADING':
-            draft.decks[action.deckId as 'A' | 'B'].isSeparatingStems = action.value;
-            break;
-        case 'STEMS_LOADED':
-            draft.decks[action.deckId as 'A' | 'B'].stemMode = 'real';
-            draft.decks[action.deckId as 'A' | 'B'].isSeparatingStems = false;
-            break;
-        case 'UPDATE_TRACK_METADATA': {
-            const track = draft.decks[action.deckId as 'A' | 'B'].track;
-            if (track) {
-                track.bpm = action.bpm;
-                track.key = action.key;
+            case 'CUE_MASTER': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.track || !deck.hasAudioBuffer) break;
+                AudioEngine.jumpToCue(action.deckId, deck.cuePoint ?? 0);
+                deck.isPlaying = false;
+                break;
             }
-            break;
-        }
-        case 'SET_PITCH':
-            draft.decks[action.deckId as 'A' | 'B'].pitch = action.value;
-            draft.decks[action.deckId as 'A' | 'B'].isSynced = false;
-            break;
-        case 'SET_PITCH_RANGE':
-            draft.decks[action.deckId as 'A' | 'B'].pitchRange = action.value;
-            break;
-        case 'TOGGLE_KEY_LOCK':
-            draft.decks[action.deckId as 'A' | 'B'].keyLock = !draft.decks[action.deckId as 'A' | 'B'].keyLock;
-            break;
-        case 'SET_KEY_SHIFT':
-            draft.decks[action.deckId as 'A' | 'B'].keyShift = action.value;
-            break;
-        case 'SET_CROSSFADER':
-            draft.crossfader = action.value;
-            break;
-        case 'SET_GRID_OFFSET':
-            draft.decks[action.deckId as 'A' | 'B'].gridOffset = action.value;
-            break;
-        case 'TOGGLE_RECORDING':
-            draft.isRecording = !draft.isRecording;
-            draft.recordingDuration = 0;
-            break;
 
-        case 'LIBRARY_INIT':
-            draft.library.tracks = action.tracks;
-            draft.library.playlists = action.playlists;
-            draft.library.isInitialized = true;
-            break;
-        case 'LIBRARY_ADD_TRACK':
-            draft.library.tracks.push(action.track);
-            break;
-        case 'LIBRARY_CREATE_PLAYLIST':
-            draft.library.playlists.push({
-                id: action.playlistId ?? `pl-${Date.now()}`,
-                name: action.name,
-                trackIds: []
-            });
-            break;
-        case 'LIBRARY_DELETE_PLAYLIST':
-            draft.library.playlists = draft.library.playlists.filter(p => p.id !== action.playlistId);
-            break;
-        case 'LIBRARY_ADD_TO_PLAYLIST': {
-            const playlist = draft.library.playlists.find(p => p.id === action.playlistId);
-            if (playlist && !playlist.trackIds.includes(action.trackId)) {
-                playlist.trackIds.push(action.trackId);
+            case 'SET_CUE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.track || !deck.hasAudioBuffer) break;
+                const cueTime = AudioEngine.getCurrentTime(action.deckId);
+                deck.cuePoints[action.index] = cueTime;
+                break;
             }
-            break;
-        }
-        case 'LIBRARY_ADD_TRACKS_TO_PLAYLIST': {
-            const playlist = draft.library.playlists.find(p => p.id === action.playlistId);
-            if (playlist) {
-                action.trackIds.forEach(tid => {
-                    if (!playlist.trackIds.includes(tid)) playlist.trackIds.push(tid);
+
+            case 'TRIGGER_CUE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                const point = deck.cuePoints[action.index];
+                if (point === null || point === undefined) break;
+                AudioEngine.jumpToCue(action.deckId, point);
+                break;
+            }
+
+            case 'DELETE_CUE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.cuePoints[action.index] = null;
+                break;
+            }
+
+            case 'LOOP_TRACK': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.hasAudioBuffer) break;
+                if (action.beats === null) {
+                    deck.activeLoop = null;
+                    AudioEngine.setLoop(action.deckId, null, null);
+                } else {
+                    deck.activeLoop = action.beats;
+                    AudioEngine.setBeatLoop(action.deckId, action.beats, deck.track?.bpm ?? 120);
+                }
+                break;
+            }
+
+            case 'LOOP_HALVE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.activeLoop) break;
+                const newBeats = Math.max(0.25, deck.activeLoop / 2);
+                deck.activeLoop = newBeats;
+                AudioEngine.setBeatLoop(action.deckId, newBeats, deck.track?.bpm ?? 120);
+                break;
+            }
+
+            case 'LOOP_DOUBLE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.activeLoop) break;
+                const newBeats = Math.min(64, deck.activeLoop * 2);
+                deck.activeLoop = newBeats;
+                AudioEngine.setBeatLoop(action.deckId, newBeats, deck.track?.bpm ?? 120);
+                break;
+            }
+
+            case 'BEAT_JUMP': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.hasAudioBuffer) break;
+                AudioEngine.beatJump(action.deckId, action.beats, deck.track?.bpm ?? 120);
+                break;
+            }
+
+            case 'SEEK_POSITION': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (!deck.hasAudioBuffer) break;
+                AudioEngine.seek(action.deckId, action.value);
+                deck.progress = action.value;
+                break;
+            }
+
+            case 'SET_PITCH': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.pitch = action.value;
+                AudioEngine.setPitch(action.deckId, action.value, deck.pitchRange, deck.keyLock, deck.keyShift);
+                break;
+            }
+
+            case 'SET_PITCH_RANGE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.pitchRange = action.value;
+                AudioEngine.setPitch(action.deckId, deck.pitch, action.value, deck.keyLock, deck.keyShift);
+                break;
+            }
+
+            case 'TOGGLE_KEY_LOCK': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.keyLock = !deck.keyLock;
+                AudioEngine.setPitch(action.deckId, deck.pitch, deck.pitchRange, deck.keyLock, deck.keyShift);
+                break;
+            }
+
+            case 'SET_KEY_SHIFT': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.keyShift = action.value;
+                AudioEngine.setPitch(action.deckId, deck.pitch, deck.pitchRange, deck.keyLock, action.value);
+                break;
+            }
+
+            case 'SET_VOLUME': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.stems[action.stem].volume = action.value;
+                AudioEngine.setStemVolume(action.deckId, action.stem, action.value);
+                break;
+            }
+
+            case 'TOGGLE_STEM': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.stems[action.stem].active = !deck.stems[action.stem].active;
+                AudioEngine.setStemVolume(action.deckId, action.stem, deck.stems[action.stem].active ? deck.stems[action.stem].volume : 0);
+                break;
+            }
+
+            case 'SET_STEM_PARAM': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.stems[action.stem].param = action.value;
+                AudioEngine.setStemParam(action.deckId, action.stem, action.value);
+                break;
+            }
+
+            case 'SET_EQ': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.eq[action.band] = action.value;
+                AudioEngine.setEq(action.deckId, action.band, action.value);
+                break;
+            }
+
+            case 'SET_COLOR_FILTER': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.color = action.value;
+                AudioEngine.setColorFilter(action.deckId, action.value);
+                break;
+            }
+
+            case 'TOGGLE_FX': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.fx.active = !deck.fx.active;
+                AudioEngine.setFxWet(action.deckId, deck.fx.active ? deck.fx.wet : 0);
+                break;
+            }
+
+            case 'SET_FX_WET': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.fx.wet = action.value;
+                if (deck.fx.active) AudioEngine.setFxWet(action.deckId, action.value);
+                break;
+            }
+
+            case 'SET_FX_TYPE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.fx.activeType = action.effectType;
+                break;
+            }
+
+            case 'SET_FX_PARAM': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (action.knob === 1) {
+                    deck.fx.knob1 = action.value;
+                } else {
+                    deck.fx.knob2 = action.value;
+                }
+                AudioEngine.setFxParam(action.deckId, action.knob, action.value);
+                break;
+            }
+
+            case 'SET_CROSSFADER': {
+                draft.crossfader = action.value;
+                AudioEngine.setCrossfader(action.value);
+                break;
+            }
+
+            case 'TOGGLE_SETTINGS': {
+                draft.settings.isOpen = !draft.settings.isOpen;
+                break;
+            }
+
+            case 'SET_AUDIO_OUTPUT': {
+                draft.settings.audioOutputId = action.deviceId;
+                break;
+            }
+
+            case 'LEARN_MIDI': {
+                break;
+            }
+
+            case 'SET_GRID_OFFSET': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.gridOffset = action.value;
+                break;
+            }
+
+            case 'TOGGLE_RECORDING': {
+                draft.isRecording = !draft.isRecording;
+                if (draft.isRecording) {
+                    AudioEngine.startRecording();
+                } else {
+                    AudioEngine.stopRecording();
+                    draft.recordingDuration = 0;
+                }
+                break;
+            }
+
+            case 'LOAD_TRACK': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.track = action.track;
+                deck.isPlaying = false;
+                deck.progress = 0;
+                deck.cuePoints = [null, null, null, null, null, null, null, null];
+                deck.activeLoop = null;
+                deck.waveformData = null;
+                deck.hasAudioBuffer = action.hasAudioBuffer ?? false;
+                break;
+            }
+
+            case 'LOAD_FILE': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isLoading = true;
+                deck.track = null;
+                deck.hasAudioBuffer = false;
+                break;
+            }
+
+            case 'SEPARATE_STEMS': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isSeparatingStems = true;
+                break;
+            }
+
+            case 'EJECT_TRACK': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                if (deck.isPlaying) AudioEngine.pause(action.deckId);
+                deck.track = null;
+                deck.hasAudioBuffer = false;
+                deck.isPlaying = false;
+                deck.progress = 0;
+                deck.cuePoints = [null, null, null, null, null, null, null, null];
+                deck.activeLoop = null;
+                deck.waveformData = null;
+                AudioEngine.unloadDeck(action.deckId);
+                break;
+            }
+
+            case 'DOUBLE_DECK': {
+                const sourceDeck = draft.decks[action.deckId as 'A' | 'B'];
+                const targetDeckId = action.deckId === 'A' ? 'B' : 'A';
+                const targetDeck = draft.decks[targetDeckId];
+                targetDeck.track = sourceDeck.track;
+                targetDeck.waveformData = sourceDeck.waveformData;
+                targetDeck.hasAudioBuffer = false;
+                AudioEngine.copyDeck(action.deckId, targetDeckId);
+                break;
+            }
+
+            case 'SET_LOADING': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isLoading = action.isLoading;
+                break;
+            }
+
+            case 'SET_PROGRESS': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.progress = action.value;
+                break;
+            }
+
+            case 'SET_LEVEL': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.level = action.level;
+                break;
+            }
+
+            case 'SET_WAVEFORM': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.waveformData = action.data;
+                break;
+            }
+
+            case 'LIBRARY_INIT': {
+                draft.library.tracks = action.tracks;
+                draft.library.playlists = action.playlists;
+                draft.library.isInitialized = true;
+                break;
+            }
+
+            case 'LIBRARY_IMPORT': {
+                // File imports are handled by the useEffect side-effect below
+                break;
+            }
+
+            case 'LIBRARY_ADD_TRACK': {
+                const exists = draft.library.tracks.some((t) => t.id === action.track.id);
+                if (!exists) {
+                    draft.library.tracks.push(action.track);
+                }
+                break;
+            }
+
+            case 'LIBRARY_CREATE_PLAYLIST': {
+                const id = action.playlistId ?? `playlist-${Date.now()}`;
+                draft.library.playlists.push({
+                    id,
+                    name: action.name,
+                    trackIds: [],
                 });
+                break;
             }
-            break;
-        }
-        case 'LIBRARY_SET_RATING': {
-            const track = draft.library.tracks.find(t => t.id === action.trackId);
-            if (track) track.rating = action.rating;
-            break;
-        }
-    }
-});
 
-// --- CONTEXT SETUP ---
+            case 'LIBRARY_DELETE_PLAYLIST': {
+                draft.library.playlists = draft.library.playlists.filter((p) => p.id !== action.playlistId);
+                break;
+            }
 
-const DjContext = createContext<{
+            case 'LIBRARY_ADD_TO_PLAYLIST': {
+                const playlist = draft.library.playlists.find((p) => p.id === action.playlistId);
+                if (playlist && !playlist.trackIds.includes(action.trackId)) {
+                    playlist.trackIds.push(action.trackId);
+                }
+                break;
+            }
+
+            case 'LIBRARY_ADD_TRACKS_TO_PLAYLIST': {
+                const playlist = draft.library.playlists.find((p) => p.id === action.playlistId);
+                if (playlist) {
+                    for (const trackId of action.trackIds) {
+                        if (!playlist.trackIds.includes(trackId)) {
+                            playlist.trackIds.push(trackId);
+                        }
+                    }
+                }
+                break;
+            }
+
+            case 'LIBRARY_SET_RATING': {
+                const track = draft.library.tracks.find((t) => t.id === action.trackId);
+                if (track) track.rating = action.rating;
+                break;
+            }
+
+            case 'TRACK_ENDED': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isPlaying = false;
+                deck.progress = 0;
+                break;
+            }
+
+            case 'SET_CHANNEL_VOLUME': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.channelVolume = action.value;
+                AudioEngine.setChannelVolume(action.deckId, action.value);
+                break;
+            }
+
+            case 'SET_STEMS_LOADING': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isSeparatingStems = action.value;
+                break;
+            }
+
+            case 'STEMS_LOADED': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                deck.isSeparatingStems = false;
+                deck.stemMode = 'real';
+                break;
+            }
+
+            case 'UPDATE_TRACK_METADATA': {
+                const deck = Object.values(draft.decks).find((d) => d.track?.id === action.trackId);
+                if (deck?.track) {
+                    if (action.bpm !== undefined) deck.track.bpm = action.bpm;
+                    if (action.key !== undefined) deck.track.key = action.key;
+                    if (action.beats !== undefined) deck.track.beats = action.beats;
+                }
+                const libTrack = draft.library.tracks.find((t) => t.id === action.trackId);
+                if (libTrack) {
+                    if (action.bpm !== undefined) libTrack.bpm = action.bpm;
+                    if (action.key !== undefined) libTrack.key = action.key;
+                    if (action.beats !== undefined) libTrack.beats = action.beats;
+                }
+                break;
+            }
+
+            case 'LIBRARY_REMOVE_TRACK': {
+                draft.library.tracks = draft.library.tracks.filter((t) => t.id !== action.trackId);
+                break;
+            }
+
+            case 'SYNC_DECK': {
+                const deck = draft.decks[action.deckId as 'A' | 'B'];
+                const otherDeckId = action.deckId === 'A' ? 'B' : 'A';
+                const otherDeck = draft.decks[otherDeckId];
+
+                if (!otherDeck.track || !deck.track) break;
+
+                const masterBpm = otherDeck.track.bpm * (1 + (otherDeck.pitch * otherDeck.pitchRange));
+                const targetPitch = (masterBpm / deck.track.bpm - 1) / deck.pitchRange;
+
+                deck.pitch = Math.max(-1, Math.min(1, targetPitch));
+                deck.isSynced = true;
+                AudioEngine.setPitch(action.deckId, deck.pitch, deck.pitchRange, deck.keyLock, deck.keyShift);
+                break;
+            }
+
+            default:
+                break;
+        }
+    });
+}
+
+const DjStateContext = createContext<{
     state: GlobalDjState;
     dispatch: (action: DeckAction) => void;
     midiDevice: string | null;
 } | null>(null);
 
-// --- STORE LOGIC ---
-function useDjStore() {
-    const [state, dispatch] = useReducer(djReducer, initialState);
+export function DjProvider({ children }: { children: React.ReactNode }) {
+    const [state, dispatch] = useReducer(djReducer, INITIAL_STATE);
     const [midiDevice, setMidiDevice] = useState<string | null>(null);
-    const midiServiceRef = useRef<MidiService | null>(null);
-    const stateRef = useRef(state);
-    stateRef.current = state;
-
-
+    const dispatchRef = useRef(dispatch);
+    dispatchRef.current = dispatch;
 
     useEffect(() => {
-        try {
-            // Sync Audio Engine Crossfader and Volumes on mount
-            AudioEngine.setCrossfader(state.crossfader);
-            AudioEngine.setChannelGain('A', state.decks.A.channelVolume);
-            AudioEngine.setChannelGain('B', state.decks.B.channelVolume);
-        } catch (e) {
-            console.warn('[useDjStore] Initial AudioEngine sync failed:', e);
-        }
-
-        midiServiceRef.current = new MidiService(
-            (action) => handleAction(action),
-            (connected, name) => setMidiDevice(connected ? name : null)
-        );
-        midiServiceRef.current.init();
-        midiServiceRef.current.setMappings(state.settings.midiMappings);
-
-        const initLib = async () => {
-            await goodDB.init();
-            const tracks = await goodDB.getAllTracks();
-            const playlists = await goodDB.getAllPlaylists();
-            const finalTracks = tracks.length > 0 ? tracks : MOCK_LIBRARY;
-            dispatch({ type: 'LIBRARY_INIT', tracks: finalTracks, playlists });
-        };
-        initLib();
-
-        let cleanupProlink: Array<() => void> = [];
-        if (window.gooddj) {
-            const offStatus = window.gooddj.onPlayerStatus((status) => {
-                console.log(`[good.dj ProLink] CDJ Status Update:`, status);
-            });
-
-            const offDevice = window.gooddj.onDeviceUpdate((data) => {
-                console.log(`[good.dj ProLink] Device update:`, data);
-            });
-
-            cleanupProlink = [offStatus, offDevice];
-        }
-
-        return () => {
-            AudioEngine.onTrackEnd = null;
-            midiServiceRef.current?.destroy();
-            cleanupProlink.forEach((cleanup) => cleanup());
-        };
+        AudioEngine.initialize().then(() => {
+            console.log('[DJ] Audio engine initialized');
+        }).catch(console.error);
     }, []);
 
-    const handleAction = useCallback(async (action: DeckAction) => {
-        if (action.type === 'TOGGLE_PLAY') {
-            const deckState = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            if (deckState.track && deckState.hasAudioBuffer) {
-                if (deckState.isPlaying) AudioEngine.pause(action.deckId);
-                else AudioEngine.play(action.deckId);
-            } else if (!deckState.hasAudioBuffer) {
-                return;
-            }
-        }
-        else if (action.type === 'SYNC_DECK') {
-            const target = action.deckId;
-            const master = target === 'A' ? 'B' : 'A';
-            const masterTrack = stateRef.current.decks[master].track;
-            const targetTrack = stateRef.current.decks[target].track;
-            if (masterTrack && targetTrack) {
-                const masterDeck = stateRef.current.decks[master];
-                const effectiveMasterBpm = masterTrack.bpm * (1 + (masterDeck.pitch * masterDeck.pitchRange));
-                const requiredPitch = ((effectiveMasterBpm / targetTrack.bpm) - 1);
-                const range = stateRef.current.decks[target].pitchRange;
-                const sliderVal = Math.max(-1, Math.min(1, requiredPitch / range));
-                dispatch({ type: 'SET_PITCH', deckId: target, value: sliderVal });
-                AudioEngine.setPitch(target, sliderVal * range);
-                AudioEngine.syncDecks(target, master, effectiveMasterBpm);
-            }
-        }
-        else if (action.type === 'SET_PITCH') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const effective = action.value * deck.pitchRange;
-            AudioEngine.setPitch(action.deckId, effective);
-        }
-        else if (action.type === 'SET_PITCH_RANGE') {
-            const currentPitch = stateRef.current.decks[action.deckId as 'A' | 'B'].pitch;
-            const effective = currentPitch * action.value;
-            AudioEngine.setPitch(action.deckId, effective);
-        }
-        else if (action.type === 'SET_CHANNEL_VOLUME') AudioEngine.setChannelGain(action.deckId, action.value);
-        else if (action.type === 'SET_EQ') AudioEngine.setEq(action.deckId, action.band, action.value);
-        else if (action.type === 'SET_VOLUME') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const active = deck.stems[action.stem].active;
-            AudioEngine.setStemState(action.deckId, action.stem, action.value, active);
-        }
-        else if (action.type === 'TOGGLE_STEM') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const stemState = deck.stems[action.stem];
-            AudioEngine.setStemState(action.deckId, action.stem, stemState.volume, !stemState.active);
-        }
-        else if (action.type === 'TOGGLE_FX') {
-            const fxState = stateRef.current.decks[action.deckId as 'A' | 'B'].fx;
-            AudioEngine.setFx(action.deckId, fxState.activeType, fxState.wet, !fxState.active);
-        }
-        else if (action.type === 'SET_FX_WET') {
-            const fxState = stateRef.current.decks[action.deckId as 'A' | 'B'].fx;
-            AudioEngine.setFx(action.deckId, fxState.activeType, action.value, fxState.active);
-        }
-        else if (action.type === 'SET_FX_TYPE') {
-            const fxState = stateRef.current.decks[action.deckId as 'A' | 'B'].fx;
-            AudioEngine.setFx(action.deckId, action.effectType, fxState.wet, fxState.active);
-            // Default parameters on type change
-            if (action.effectType === EffectType.DELAY || action.effectType === EffectType.ECHO) {
-                AudioEngine.setFxParam(action.deckId, 1, fxState.knob1, action.effectType);
-                AudioEngine.setFxParam(action.deckId, 2, fxState.knob2, action.effectType);
-            } else if (action.effectType === EffectType.REVERB) {
-                AudioEngine.setFxParam(action.deckId, 1, fxState.knob1, action.effectType);
-                AudioEngine.setFxParam(action.deckId, 2, fxState.knob2, action.effectType);
-            }
-        }
-        else if (action.type === 'SET_FX_PARAM') {
-            const type = stateRef.current.decks[action.deckId as 'A' | 'B'].fx.activeType;
-            AudioEngine.setFxParam(action.deckId, action.knob, action.value, type);
-        }
-        else if (action.type === 'TRIGGER_CUE') {
-            const deckState = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const val = deckState.cuePoints[action.index];
-            if (val !== null) {
-                AudioEngine.seek(action.deckId, val);
-                if (!deckState.isPlaying) {
-                    AudioEngine.play(action.deckId);
-                    dispatch({ type: 'SET_PLAYING', deckId: action.deckId, value: true });
+    useEffect(() => {
+        LibraryService.initialize().then(({ tracks, playlists }) => {
+            dispatch({ type: 'LIBRARY_INIT', tracks, playlists });
+        }).catch(console.error);
+    }, []);
+
+    useEffect(() => {
+        MidiService.initialize((device) => setMidiDevice(device)).catch(console.error);
+        return () => MidiService.dispose();
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            for (const deckId of ['A', 'B'] as const) {
+                const deck = state.decks[deckId];
+                if (deck.isPlaying) {
+                    const progress = AudioEngine.getProgress(deckId);
+                    const level = AudioEngine.getLevel(deckId);
+                    dispatchRef.current({ type: 'SET_PROGRESS', deckId, value: progress });
+                    dispatchRef.current({ type: 'SET_LEVEL', deckId, level });
                 }
             }
-        }
-        else if (action.type === 'CUE_MASTER') AudioEngine.handleCue(action.deckId);
-        else if (action.type === 'LOOP_TRACK') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            if (deck.track) AudioEngine.setLoop(action.deckId, action.beats, deck.track.bpm, deck.track.beats);
-        }
-        else if (action.type === 'LOOP_HALVE') {
-            AudioEngine.halveLoop(action.deckId);
-        }
-        else if (action.type === 'LOOP_DOUBLE') {
-            AudioEngine.doubleLoop(action.deckId);
-        }
-        else if (action.type === 'BEAT_JUMP') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            if (deck.track) AudioEngine.beatJump(action.deckId, action.beats, deck.track.bpm, deck.track.beats);
-        }
-        else if (action.type === 'SEEK_POSITION') AudioEngine.seek(action.deckId, action.value);
-        else if (action.type === 'SET_CROSSFADER') AudioEngine.setCrossfader(action.value);
-        else if (action.type === 'SET_AUDIO_OUTPUT') AudioEngine.setAudioOutput(action.deviceId);
-        else if (action.type === 'EJECT_TRACK') AudioEngine.eject(action.deckId);
-        else if (action.type === 'SET_GRID_OFFSET') AudioEngine.setGridOffset(action.deckId, action.value);
-        else if (action.type === 'TOGGLE_RECORDING') {
-            if (stateRef.current.isRecording) AudioEngine.stopRecording();
-            else AudioEngine.startRecording();
-        }
-        else if (action.type === 'SET_COLOR_FILTER') AudioEngine.setColorFilter(action.deckId, action.value);
-        else if (action.type === 'TOGGLE_KEY_LOCK') AudioEngine.setKeyLock(action.deckId, !stateRef.current.decks[action.deckId as 'A' | 'B'].keyLock);
-        else if (action.type === 'SET_KEY_SHIFT') AudioEngine.setKeyShift(action.deckId, action.value);
-        else if (action.type === 'SEPARATE_STEMS') {
-            const deckState = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const filePath = deckState.track?.filePath;
+        }, 50);
+        return () => clearInterval(interval);
+    }, [state.decks]);
 
-            if (!window.gooddj?.stems || !filePath) {
-                console.warn('[useDjState] Stem separation is only available in Electron with a real file path.');
-                return;
-            }
-
-            dispatch({ type: 'SET_STEMS_LOADING', deckId: action.deckId, value: true });
-            try {
-                const stems = await window.gooddj.stems.separate(filePath);
-                await AudioEngine.loadStems(action.deckId, stems);
-                dispatch({ type: 'STEMS_LOADED', deckId: action.deckId });
-            } catch (err) {
-                console.error('[useDjState] Stem separation failed:', err);
-                dispatch({ type: 'SET_STEMS_LOADING', deckId: action.deckId, value: false });
-            }
+    const wrappedDispatch = useCallback((action: DeckAction) => {
+        if (action.type === 'LOAD_FILE') {
+            dispatch(action);
+            AudioEngine.resume();
+            AudioEngine.loadFile(action.deckId, action.file, (track) => {
+                dispatchRef.current({ type: 'LOAD_TRACK', deckId: action.deckId, track, hasAudioBuffer: true });
+                dispatchRef.current({ type: 'SET_LOADING', deckId: action.deckId, isLoading: false });
+                AudioEngine.generateWaveformData(action.deckId, action.file).then((data) => {
+                    dispatchRef.current({ type: 'SET_WAVEFORM', deckId: action.deckId, data });
+                }).catch(console.error);
+                AudioEngine.analyzeTrack(action.deckId, action.file).then((metadata) => {
+                    if (metadata) dispatchRef.current({ type: 'UPDATE_TRACK_METADATA', trackId: track.id, ...metadata });
+                }).catch(console.error);
+                LibraryService.saveTrack({
+                    ...track,
+                    album: '',
+                    genre: '',
+                    rating: 0,
+                    dateAdded: new Date().toISOString(),
+                    analyzed: false,
+                }, action.file).then((savedTrack) => {
+                    dispatchRef.current({ type: 'LIBRARY_ADD_TRACK', track: savedTrack });
+                }).catch(console.error);
+            });
             return;
         }
 
-        else if (action.type === 'DOUBLE_DECK') {
-            const sourceId = action.deckId === 'A' ? 'B' : 'A';
-            if (stateRef.current.decks[sourceId].track) {
-                AudioEngine.cloneDeck(sourceId, action.deckId);
-            }
-        }
-
-        else if (action.type === 'LOAD_FILE') {
-            const currentDeck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-
-            // Stop playing if it is currently playing
-            if (currentDeck.isPlaying) {
-                AudioEngine.pause(action.deckId);
-                dispatch({ type: 'TRACK_ENDED', deckId: action.deckId });
-            }
-
-            dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: true });
-            try {
-                const { duration, waveform } = await AudioEngine.loadFile(action.deckId, action.file);
-
-                // Get a reference to the buffer for analysis before dispatching LOAD_TRACK
-                // (LOAD_TRACK will clear the old buffer state)
-                const loadedBuffer = AudioEngine.getBuffer(action.deckId);
-
-                dispatch({
-                    type: 'LOAD_TRACK',
-                    deckId: action.deckId,
-                    track: {
-                        id: `local-${Date.now()}`,
-                        title: action.file.name.replace(/\.[^/.]+$/, "").substring(0, 30),
-                        artist: "LOCAL AUDIO",
-                        bpm: 124.0,
-                        key: '1A',
-                        duration: duration,
-                        filePath: (action.file as any).path
-                    },
-                    hasAudioBuffer: true
-                });
-                dispatch({ type: 'SET_WAVEFORM', deckId: action.deckId, data: waveform });
-                if (loadedBuffer) {
-                    const filePath = (action.file as any).path;
-                    analyzeTrack(loadedBuffer, filePath, { mode: 'direct' }).then((result) => {
-                        dispatch({ type: 'UPDATE_TRACK_METADATA', deckId: action.deckId, bpm: result.bpm, key: result.key });
-                    }).catch((err) => console.warn('[useDjState] Track analysis failed:', err));
-                }
-            } catch (err) {
-                console.error("Critical: Failed to load file", err);
-            } finally {
-                dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: false });
-            }
-            return;
-        }
-
-        else if (action.type === 'LOAD_TRACK') {
-            const currentDeck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-
-            // Stop playing if it is currently playing
-            if (currentDeck.isPlaying) {
-                AudioEngine.pause(action.deckId);
-                dispatch({ type: 'TRACK_ENDED', deckId: action.deckId });
-            }
-
-            // Resolve the track audio from whichever storage backend owns this entry.
-            const blob = await goodDB.getTrackBlob(action.track.id, action.track.filePath);
-            if (blob) {
-                dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: true });
-                try {
-                    const { duration, waveform } = await AudioEngine.loadFile(action.deckId, blob as File);
-                    // Update track with real duration if it was 0
-                    const updatedTrack = { ...action.track, duration: duration || action.track.duration };
-                    dispatch({ type: 'LOAD_TRACK', deckId: action.deckId, track: updatedTrack, hasAudioBuffer: true });
-                    dispatch({ type: 'SET_WAVEFORM', deckId: action.deckId, data: waveform });
-                    const loadedBuffer = AudioEngine.getBuffer(action.deckId);
-                    if (loadedBuffer) {
-                        const filePath = (action.track as LibraryTrack).filePath;
-                        analyzeTrack(loadedBuffer, filePath, { mode: 'direct' }).then((result) => {
-                            dispatch({ type: 'UPDATE_TRACK_METADATA', deckId: action.deckId, bpm: result.bpm, key: result.key });
-                        }).catch((err) => console.warn('[useDjState] Track analysis failed:', err));
-                    }
-                } catch (e) { console.error("DB Load Error", e); }
-                dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: false });
-            } else {
-                // Metadata-only fallback: keep the deck label populated even if audio resolution fails.
-                console.warn('[useDjState] Could not resolve playable audio for library track:', {
-                    trackId: action.track.id,
-                    filePath: action.track.filePath,
-                });
-                dispatch({ type: 'LOAD_TRACK', deckId: action.deckId, track: action.track, hasAudioBuffer: false });
-            }
-            return;
-        }
-        else if (action.type === 'LIBRARY_IMPORT') {
-            console.log(`[good.dj] DEBUG: Starting library import session for ${action.files.length} files`);
-
-            try {
-                for (const file of action.files) {
-                    try {
-                        if (file.name.toLowerCase().endsWith('.xml')) {
-                            console.log(`[good.dj] Processing Rekordbox XML: ${file.name}`);
-                            const entries = await parseRekordboxXml(file);
-                            await goodDB.saveRekordboxCache(entries);
-                            console.log(`[good.dj] Saved ${Object.keys(entries).length} tracking keys from Rekordbox XML Cache`);
-                            continue;
-                        }
-
-                        console.log(`[good.dj] DEBUG: Processing track: ${file.name}`);
-                        const baseName = file.name.replace(/\.[^/.]+$/, "");
-                        const id = `t-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-                        const track: LibraryTrack = {
-                            id,
-                            title: baseName,
-                            artist: 'Unknown Artist',
-                            album: 'Imported',
-                            genre: 'Unknown',
-                            bpm: 120,
-                            key: '1A',
-                            duration: 0,
+        if (action.type === 'LIBRARY_IMPORT') {
+            for (const file of action.files) {
+                if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|flac|m4a|aac)$/i)) {
+                    AudioEngine.resume();
+                    AudioEngine.loadFile('A', file, (track) => {
+                        LibraryService.saveTrack({
+                            ...track,
+                            album: '',
+                            genre: '',
                             rating: 0,
-                            dateAdded: new Date().toISOString().split('T')[0],
-                            analyzed: false
-                        };
-
-                        const searchKey = baseName.toLowerCase().trim();
-                        const cached = await goodDB.getRekordboxEntry(searchKey);
-
-                        if (cached) {
-                            console.log(`[good.dj] DEBUG: Rekordbox cache hit for: ${baseName}`);
-                            track.title = cached.title;
-                            track.artist = cached.artist;
-                            track.bpm = cached.bpm;
-                            track.key = cached.key;
-                            track.duration = cached.duration;
-                            track.analyzed = true;
-                        } else {
-                            console.log(`[good.dj] DEBUG: Decoding audio for analysis: ${file.name}`);
-                            const arrayBuffer = await file.arrayBuffer();
-                            const decoded = await AudioEngine.decodeAudioData(arrayBuffer);
-                            track.duration = decoded.duration;
-
-                            try {
-                                console.log(`[good.dj] DEBUG: Starting MIR analysis (15s timeout): ${file.name}`);
-                                const analysisPromise = analyzeTrack(decoded, (file as any).path, { mode: 'worker' });
-                                const timeoutPromise = new Promise((_, reject) =>
-                                    setTimeout(() => reject(new Error("MIR Analysis Timeout")), 15000)
-                                );
-
-                                const analysis = await Promise.race([analysisPromise, timeoutPromise]) as TrackAnalysisResult;
-                                track.bpm = analysis.bpm;
-                                track.key = analysis.key;
-                                track.beats = analysis.beats;
-                                track.analyzed = true;
-                                console.log(`[good.dj] DEBUG: MIR analysis success: ${file.name}`);
-                            } catch (analysisErr) {
-                                console.warn(`[good.dj] WARN: Analysis failed or timed out for ${file.name}:`, analysisErr);
-                            }
-                        }
-
-                        const savedTrack = await goodDB.saveTrack(track, file);
-                        dispatch({ type: 'LIBRARY_ADD_TRACK', track: savedTrack });
-                        console.log(`[good.dj] SUCCESS: Imported ${file.name}`);
-                    } catch (fileErr) {
-                        console.error(`[useDjState] Failed to process file ${file.name}:`, fileErr);
-                    }
+                            dateAdded: new Date().toISOString(),
+                            analyzed: false,
+                        }, file).then((savedTrack) => {
+                            dispatchRef.current({ type: 'LIBRARY_ADD_TRACK', track: savedTrack });
+                        }).catch(console.error);
+                    });
                 }
-            } finally {
-                console.log(`[good.dj] Library import session complete.`);
             }
             return;
-        }
-        else if (action.type === 'LIBRARY_CREATE_PLAYLIST') {
-            const playlist = await goodDB.createPlaylist(action.name);
-            dispatch({ type: 'LIBRARY_CREATE_PLAYLIST', name: playlist.name, playlistId: playlist.id });
-            return;
-        }
-        else if (action.type === 'LIBRARY_DELETE_PLAYLIST') {
-            await goodDB.deletePlaylist(action.playlistId);
-        }
-        else if (action.type === 'LIBRARY_ADD_TO_PLAYLIST') {
-            await goodDB.addTrackToPlaylist(action.playlistId, action.trackId);
-        }
-        else if (action.type === 'LIBRARY_ADD_TRACKS_TO_PLAYLIST') {
-            await goodDB.addTracksToPlaylist(action.playlistId, action.trackIds);
-        }
-        else if (action.type === 'LIBRARY_SET_RATING') {
-            await goodDB.setTrackRating(action.trackId, action.rating);
-        }
-
-        if (action.type === 'LEARN_MIDI') {
-            if (midiServiceRef.current) {
-                midiServiceRef.current.enableLearn(action.actionId, (mapping) => {
-                    const newMappings = { ...stateRef.current.settings.midiMappings, [action.actionId]: mapping };
-                    localStorage.setItem('good_dj_midi_map', JSON.stringify(newMappings));
-                    midiServiceRef.current?.setMappings(newMappings);
-                    console.log(`MIDI: Mapped ${action.actionId} to ${mapping.type.toUpperCase()} on Ch${mapping.channel}`);
-                });
-            }
         }
 
         dispatch(action);
     }, []);
 
-    useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => {
-            // Prevent space/enter from firing twice if user is focused on a button or input
-            const activeTag = document.activeElement?.tagName;
-            if (activeTag === 'BUTTON' || activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
-
-            if (e.code === 'Space') {
-                e.preventDefault();
-                handleAction({ type: 'TOGGLE_PLAY', deckId: 'A' });
-            }
-            if (e.code === 'Enter') {
-                e.preventDefault();
-                handleAction({ type: 'TOGGLE_PLAY', deckId: 'B' });
-            }
-        };
-        window.addEventListener('keydown', handleKey);
-        return () => window.removeEventListener('keydown', handleKey);
-    }, [handleAction]);
-
-    useEffect(() => {
-        let animationFrameId: number;
-        // Track previous values to avoid redundant dispatches
-        let prevProgA = 0, prevProgB = 0, prevLevA = 0, prevLevB = 0;
-        const PROGRESS_THRESHOLD = 0.0005;
-        const LEVEL_THRESHOLD = 0.005;
-
-        const loop = () => {
-            const progA = AudioEngine.getProgress('A');
-            const progB = AudioEngine.getProgress('B');
-            const levA = AudioEngine.getLevel('A');
-            const levB = AudioEngine.getLevel('B');
-
-            if (Math.abs(progA - prevProgA) > PROGRESS_THRESHOLD) {
-                dispatch({ type: 'SET_PROGRESS', deckId: 'A', value: progA });
-                prevProgA = progA;
-            }
-            if (Math.abs(progB - prevProgB) > PROGRESS_THRESHOLD) {
-                dispatch({ type: 'SET_PROGRESS', deckId: 'B', value: progB });
-                prevProgB = progB;
-            }
-            if (Math.abs(levA - prevLevA) > LEVEL_THRESHOLD || (levA < 0.01 && prevLevA >= 0.01)) {
-                dispatch({ type: 'SET_LEVEL', deckId: 'A', level: levA });
-                prevLevA = levA;
-            }
-            if (Math.abs(levB - prevLevB) > LEVEL_THRESHOLD || (levB < 0.01 && prevLevB >= 0.01)) {
-                dispatch({ type: 'SET_LEVEL', deckId: 'B', level: levB });
-                prevLevB = levB;
-            }
-
-            animationFrameId = requestAnimationFrame(loop);
-        };
-        loop();
-        return () => cancelAnimationFrame(animationFrameId);
-    }, []);
-
-    return { state, dispatch: handleAction, midiDevice };
+    return React.createElement(
+        DjStateContext.Provider,
+        { value: { state, dispatch: wrappedDispatch, midiDevice } },
+        children
+    );
 }
 
-// --- EXPORTS ---
-
-export const DjProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const store = useDjStore();
-    return React.createElement(DjContext.Provider, { value: store }, children);
-};
-
 export function useDjState() {
-    const context = useContext(DjContext);
-    if (!context) {
-        throw new Error("useDjState must be used within a DjProvider");
-    }
-    return context;
+    const ctx = useContext(DjStateContext);
+    if (!ctx) throw new Error('useDjState must be used inside DjProvider');
+    return ctx;
 }

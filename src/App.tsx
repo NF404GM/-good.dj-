@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { AppView, DeckAction } from './types';
 import { Deck } from './components/Deck';
 import { Crossfader } from './components/Crossfader';
@@ -6,8 +6,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { useDjState, DjProvider } from './hooks/useDjState';
 import { CentralMixer } from './components/CentralMixer';
 import { BootSequence } from './components/BootSequence';
-import { useProLink } from './hooks/useProLink';
-import { ActivationGate } from './components/ActivationGate';
 import { SHOW_ARCHITECTURE_VIEW } from './services/config';
 
 const LibraryView = lazy(() => import('./components/LibraryView').then((module) => ({ default: module.LibraryView })));
@@ -25,15 +23,8 @@ const RootLayout: React.FC<{
     onToggleRecording: () => void;
     updateInfo: { latest: string; url: string } | null;
     onDismissUpdate: () => void;
-    prolink: {
-        isConnected: boolean;
-        devices: any[];
-        syncEnabled: boolean;
-        setSyncEnabled: (value: boolean) => void;
-    };
     dispatch: (action: DeckAction) => void;
-}> = ({ children, currentView, onNavigate, midiDevice, onToggleSettings, isRecording, onToggleRecording, updateInfo, onDismissUpdate, prolink, dispatch }) => {
-    const shellBadge = typeof window !== 'undefined' && (window as any).gooddj ? 'DESKTOP' : 'WEB';
+}> = ({ children, currentView, onNavigate, midiDevice, onToggleSettings, isRecording, onToggleRecording, updateInfo, onDismissUpdate, dispatch }) => {
 
     return (
         <div
@@ -70,7 +61,7 @@ const RootLayout: React.FC<{
                         <div className={`h-2 w-2 rounded-full transition-colors duration-500 ${midiDevice ? 'bg-signal-nominal animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-text-secondary/50'}`} />
                         <span className="text-sm font-bold tracking-tight">good.<span className="text-text-secondary">DJ</span></span>
                         <span className="rounded-btn-sm border border-white/8 bg-black/30 px-2 py-1 font-mono text-[8px] font-black tracking-[0.18em] text-text-data">
-                            {shellBadge}
+                            WEB
                         </span>
                         {updateInfo ? (
                             <a
@@ -116,25 +107,6 @@ const RootLayout: React.FC<{
                             <span className="font-bold tracking-wider">{midiDevice ? midiDevice.toUpperCase() : 'NO MIDI'}</span>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <div
-                                className={`flex items-center gap-1.5 rounded-btn-sm border px-2 py-1 transition-colors ${prolink.isConnected ? 'border-signal-nominal/25 bg-signal-nominal/12 text-signal-nominal' : 'cursor-help border-white/8 bg-black/30 text-text-data'}`}
-                                title={prolink.isConnected ? `${prolink.devices.length} devices linked` : 'Connect Pioneer hardware via ProLink bridge'}
-                            >
-                                <span className="font-bold tracking-wider">CDJ</span>
-                                <div className={`h-1.5 w-1.5 rounded-full ${prolink.isConnected ? 'bg-signal-nominal animate-pulse' : 'bg-white/10'}`} />
-                            </div>
-
-                            {prolink.isConnected ? (
-                                <button
-                                    onClick={() => prolink.setSyncEnabled(!prolink.syncEnabled)}
-                                    className={`rounded-btn-sm border px-2 py-1 text-[8px] font-bold transition-all ${prolink.syncEnabled ? 'border-signal-nominal bg-signal-nominal text-canvas' : 'border-white/20 text-text-data hover:border-white/40'}`}
-                                >
-                                    HW-SYNC
-                                </button>
-                            ) : null}
-                        </div>
-
                         <button
                             onClick={onToggleRecording}
                             className={`flex items-center gap-2 rounded-btn-sm border px-3 py-1 text-[9px] font-bold transition-all ${isRecording ? 'animate-dot-pulse border-signal-clipping bg-signal-clipping text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-white/10 bg-black/30 text-text-data hover:border-white/30'}`}
@@ -152,7 +124,7 @@ const RootLayout: React.FC<{
                 <footer className="z-50 mx-2 mb-2 flex h-7 shrink-0 items-center justify-between rounded-panel border border-white/8 bg-black/35 px-4 text-[8px] font-mono text-text-data">
                     <div className="flex gap-4">
                         <span>CORE v1.0.0</span>
-                        <span>{shellBadge} MIDI: {midiDevice ? 'ACTIVE' : 'IDLE'}</span>
+                        <span>WEB MIDI: {midiDevice ? 'ACTIVE' : 'IDLE'}</span>
                         <span className="hidden lg:block">44.1kHz</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -170,17 +142,7 @@ function AppContent() {
     const [currentView, setCurrentView] = useState<AppView>(AppView.INTERFACE);
     const [updateInfo, setUpdateInfo] = useState<{ latest: string; url: string } | null>(null);
     const { state, dispatch, midiDevice } = useDjState();
-    const prolink = useProLink(dispatch);
-
     const { decks, crossfader } = state;
-
-    useEffect(() => {
-        const cleanup = (window as any).gooddj?.onUpdateAvailable?.((info: { latest: string; url: string }) => {
-            setUpdateInfo(info);
-        });
-
-        return () => cleanup?.();
-    }, []);
 
     return (
         <>
@@ -195,7 +157,6 @@ function AppContent() {
                 onToggleRecording={() => dispatch({ type: 'TOGGLE_RECORDING' })}
                 updateInfo={updateInfo}
                 onDismissUpdate={() => setUpdateInfo(null)}
-                prolink={prolink}
                 dispatch={dispatch}
             >
                 <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center bg-canvas font-mono text-xs text-signal-nominal">LOADING MODULE...</div>}>
@@ -242,12 +203,10 @@ function AppContent() {
 
 export default function App() {
     return (
-        <ActivationGate>
-            <BootSequence>
-                <DjProvider>
-                    <AppContent />
-                </DjProvider>
-            </BootSequence>
-        </ActivationGate>
+        <BootSequence>
+            <DjProvider>
+                <AppContent />
+            </DjProvider>
+        </BootSequence>
     );
 }
