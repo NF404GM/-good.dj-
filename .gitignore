@@ -12,13 +12,16 @@ prisma/dev.db-journal
 # Environment Variables
 .env
 .env.local
+.env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
 # Logs
 logs
 *.log
+*.lint-output
 lint_output*.txt
 tsc_output*.txt
 npm-debug.log*
@@ -32,6 +35,8 @@ node_modules
 
 # Build outputs
 dist
+dist/
+dist-electron/
 dist-ssr
 electron-dist
 server-dist
@@ -45,6 +50,7 @@ _tmp_demucsv4.onnx
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+.eslintcache
 .idea
 .DS_Store
 *.suo
