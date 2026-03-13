@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { AppView, DeckAction, GlobalDjState } from './types';
 import { Deck } from './components/Deck';
 import { Crossfader } from './components/Crossfader';
@@ -25,6 +25,8 @@ const RootLayout: React.FC<{
     onToggleSettings: () => void;
     isRecording: boolean;
     onToggleRecording: () => void;
+    updateInfo: { latest: string; url: string } | null;
+    onDismissUpdate: () => void;
     prolink: { 
         isConnected: boolean; 
         devices: any[]; 
@@ -32,7 +34,7 @@ const RootLayout: React.FC<{
         setSyncEnabled: (v: boolean) => void 
     };
     dispatch: (action: DeckAction) => void;
-}> = ({ children, currentView, onNavigate, midiDevice, onToggleSettings, isRecording, onToggleRecording, prolink, dispatch }) => {
+}> = ({ children, currentView, onNavigate, midiDevice, onToggleSettings, isRecording, onToggleRecording, updateInfo, onDismissUpdate, prolink, dispatch }) => {
     return (
         <div
             className="w-screen h-screen flex flex-col bg-canvas text-text-primary overflow-hidden"
@@ -77,6 +79,17 @@ const RootLayout: React.FC<{
                     <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(var(--signal-nominal-rgb),0.5)] transition-colors duration-500 ${midiDevice ? 'bg-signal-nominal animate-pulse' : 'bg-text-secondary'}`} />
                     <span className="font-bold tracking-tighter text-sm">good.<span className="font-medium text-text-secondary">DJ</span></span>
                     <span className="text-[9px] font-mono text-text-data px-1.5 py-0.5 border border-white/10 rounded-btn-sm bg-surface-idle">WEB v1.0</span>
+                    {updateInfo && (
+                        <a
+                            href={updateInfo.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={onDismissUpdate}
+                            className="px-2 py-0.5 text-[8px] font-mono font-black bg-green-500/20 text-green-400 border border-green-500/30 rounded uppercase tracking-widest hover:bg-green-500/30 transition-all"
+                        >
+                            UPDATE {updateInfo.latest} ↗
+                        </a>
+                    )}
                 </div>
 
                 <nav className="flex gap-1 bg-canvas/50 p-[1px] rounded-btn-sm border border-white/5 shadow-inner">
@@ -177,10 +190,19 @@ const RootLayout: React.FC<{
 // --- APP CONTENT ---
 function AppContent() {
     const [currentView, setCurrentView] = useState<AppView>(AppView.INTERFACE);
+    const [updateInfo, setUpdateInfo] = useState<{ latest: string; url: string } | null>(null);
     const { state, dispatch, midiDevice } = useDjState();
     const prolink = useProLink(dispatch);
 
     const { decks, crossfader, isRecording } = state;
+
+    useEffect(() => {
+        const cleanup = (window as any).gooddj?.onUpdateAvailable?.((info: { latest: string; url: string }) => {
+            setUpdateInfo(info);
+        });
+
+        return () => cleanup?.();
+    }, []);
 
     return (
         <>
@@ -193,6 +215,8 @@ function AppContent() {
                 onToggleSettings={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
                 isRecording={state.isRecording}
                 onToggleRecording={() => dispatch({ type: 'TOGGLE_RECORDING' })}
+                updateInfo={updateInfo}
+                onDismissUpdate={() => setUpdateInfo(null)}
                 prolink={prolink}
                 dispatch={dispatch}
             >

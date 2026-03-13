@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld('gooddj', {
     getUploadsDir: () => ipcRenderer.invoke('app:getUploadsDir'),
     platform: process.platform,
     // Event listeners
+    onUpdateAvailable: (callback: (info: { current: string; latest: string; url: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, info: { current: string; latest: string; url: string }) => callback(info);
+        ipcRenderer.on('update-available', handler);
+        return () => ipcRenderer.removeListener('update-available', handler);
+    },
     onPlayerStatus: (callback: (state: any) => void) => {
         const handler = (_event: any, state: any) => callback(state);
         ipcRenderer.on('prolink:status', handler);

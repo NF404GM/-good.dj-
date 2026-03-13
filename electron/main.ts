@@ -19,6 +19,9 @@ function safeLoadEnvFile(filename: string) {
 safeLoadEnvFile('.env.local');
 safeLoadEnvFile('.env');
 
+// GUMROAD_PRODUCT_ID is read from .env (VITE_GUMROAD_PRODUCT_ID).
+// The .env file is NOT committed to git. Set it locally from your Gumroad
+// Dashboard -> Products -> [good.dj] -> Permalink before distributing.
 const GUMROAD_PRODUCT_ID = process.env.VITE_GUMROAD_PRODUCT_ID ?? '';
 
 let mainWindow: BrowserWindow | null = null;
@@ -27,6 +30,44 @@ let cleanupIpcHandlers: (() => void) | null = null;
 
 function getUserDataPath(): string {
     return app.getPath('userData');
+}
+
+/**
+ * Silently checks GitHub Releases for a newer version.
+ * 2-second timeout. Never throws. Fires after window loads.
+ */
+async function checkForUpdates(window: BrowserWindow): Promise<void> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        const res = await fetch(
+            'https://api.github.com/repos/NF404GM/-good.dj-/releases/latest',
+            {
+                signal: controller.signal,
+                headers: { 'User-Agent': 'good.dj-app' },
+            }
+        );
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            return;
+        }
+
+        const data = await res.json() as { tag_name?: string };
+        const latestTag = data.tag_name?.replace(/^v/, '');
+        const currentVer = app.getVersion();
+
+        if (latestTag && latestTag !== currentVer) {
+            window.webContents.send('update-available', {
+                current: currentVer,
+                latest: latestTag,
+                url: `https://github.com/NF404GM/-good.dj-/releases/tag/v${latestTag}`,
+            });
+        }
+    } catch {
+        // Offline or timeout - never surface errors to the user.
+    }
 }
 
 function createWindow(): void {
@@ -56,6 +97,12 @@ function createWindow(): void {
 
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
+    });
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        if (mainWindow) {
+            void checkForUpdates(mainWindow);
+        }
     });
 
     cleanupIpcHandlers?.();
