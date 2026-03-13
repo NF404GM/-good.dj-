@@ -1,6 +1,24 @@
 
 import { DeckAction, MidiMapping } from '../types';
 
+/**
+ * Maps a 0-127 MIDI CC value to a -1 to +1 pitch range.
+ * Includes a +/-3% dead zone around center to eliminate
+ * jitter from physical fader imprecision at the center detent.
+ */
+function mapPitchCC(value: number): number {
+    const DEAD_ZONE = 0.03;
+    const normalized = (value - 64) / 63;
+
+    if (Math.abs(normalized) < DEAD_ZONE) {
+        return 0;
+    }
+
+    const sign = normalized > 0 ? 1 : -1;
+    const scaled = sign * (Math.abs(normalized) - DEAD_ZONE) / (1 - DEAD_ZONE);
+    return Math.max(-1, Math.min(1, scaled));
+}
+
 export class MidiService {
     private access: any = null;
     private onAction: (action: DeckAction) => void;
@@ -103,14 +121,14 @@ export class MidiService {
 
         if (actionId) {
             const val = data2 / 127.0;
-            this.dispatchMappedAction(actionId, val);
+            this.dispatchMappedAction(actionId, val, data2);
         } else {
             // Fallback to default hardcoded map if strict dynamic map not found?
             // For now, let's keep it strictly dynamic to enforce the "Settings" flow.
         }
     }
 
-    private dispatchMappedAction(actionId: string, value: number) {
+    private dispatchMappedAction(actionId: string, value: number, rawValue: number) {
         // Global Map
         if (actionId === 'CROSSFADER') {
             this.onAction({ type: 'SET_CROSSFADER', value: value * 100 });
@@ -134,9 +152,7 @@ export class MidiService {
         } else if (feature === 'VOL') {
             this.onAction({ type: 'SET_CHANNEL_VOLUME', deckId, value });
         } else if (feature === 'PITCH') {
-            const rawPitch = (0.5 - value) * -2;
-            const pitchVal = Math.abs(rawPitch) < 0.02 ? 0 : rawPitch;
-            this.onAction({ type: 'SET_PITCH', deckId, value: pitchVal });
+            this.onAction({ type: 'SET_PITCH', deckId, value: mapPitchCC(rawValue) });
         } else if (feature === 'FILTER') {
             // Color filter. Center is 0.5. 
             this.onAction({ type: 'SET_COLOR_FILTER', deckId, value });
