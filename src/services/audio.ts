@@ -2,6 +2,7 @@ import { AudioDeck, EqState, EffectType, StemSeparationResult, StemType } from '
 import SignalsmithStretch from 'signalsmith-stretch';
 import { EffectsEngine } from './effects_engine';
 import { SERVER_BASE } from './config';
+import { generateImpulseResponse } from './audioUtils';
 
 type RealStemName = 'drums' | 'bass' | 'other' | 'vocals';
 
@@ -40,7 +41,7 @@ class AudioEngineService {
         this.masterGain.connect(this.ctx.destination);
 
         // Pre-generate Reverb IR
-        this.impulseBuffer = this.createImpulseResponse(2.0, 2.0);
+        this.impulseBuffer = generateImpulseResponse(this.ctx, 2.0, 2.0);
 
         this.decks = {};
         this.readyPromise = this.initWorklet();
@@ -409,22 +410,6 @@ class AudioEngineService {
     }
 
     // --- UTILS ---
-
-    private createImpulseResponse(duration: number, decay: number): AudioBuffer {
-        const sampleRate = this.ctx.sampleRate;
-        const length = sampleRate * duration;
-        const impulse = this.ctx.createBuffer(2, length, sampleRate);
-        const left = impulse.getChannelData(0);
-        const right = impulse.getChannelData(1);
-
-        for (let i = 0; i < length; i++) {
-            const n = i;
-            const factor = Math.pow(1 - n / length, decay);
-            left[i] = (Math.random() * 2 - 1) * factor;
-            right[i] = (Math.random() * 2 - 1) * factor;
-        }
-        return impulse;
-    }
 
     public async resume() {
         if (this.ctx.state === 'suspended') await this.ctx.resume();

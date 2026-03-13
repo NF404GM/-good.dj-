@@ -1,4 +1,5 @@
 import Tuna from 'tunajs';
+import { generateImpulseResponse } from './audioUtils';
 
 export class EffectsEngine {
     private tuna: any;
@@ -34,7 +35,7 @@ export class EffectsEngine {
     public applyReverbPreset(reverb: any, presetName: string) {
         const preset = this.reverbPresets[presetName] || this.reverbPresets['Standard'];
         if (reverb.convolver) {
-            reverb.convolver.buffer = this.generateImpulseResponse(preset.duration, preset.decay);
+            reverb.convolver.buffer = generateImpulseResponse(this.ctx, preset.duration, preset.decay);
         }
     }
 
@@ -55,20 +56,5 @@ export class EffectsEngine {
             resonance: 0.5,
             bufferSize: 4096
         });
-    }
-
-    private generateImpulseResponse(duration: number, decay: number): AudioBuffer {
-        const sampleRate = this.ctx.sampleRate;
-        const length = Math.floor(sampleRate * duration);
-        const impulse = this.ctx.createBuffer(2, length, sampleRate);
-        const left = impulse.getChannelData(0);
-        const right = impulse.getChannelData(1);
-
-        for (let i = 0; i < length; i++) {
-            const factor = Math.pow(1 - i / length, decay);
-            left[i] = (Math.random() * 2 - 1) * factor;
-            right[i] = (Math.random() * 2 - 1) * factor;
-        }
-        return impulse;
     }
 }
