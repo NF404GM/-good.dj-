@@ -46,15 +46,15 @@
 
 @keyframes deck-live {
   0% {
-    box-shadow: 0 0 0 rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 rgba(0, 232, 122, 0);
   }
 
   40% {
-    box-shadow: 0 0 24px rgba(16, 185, 129, 0.7);
+    box-shadow: 0 0 24px rgba(0, 232, 122, 0.7);
   }
 
   100% {
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+    box-shadow: 0 0 12px rgba(0, 232, 122, 0.35);
   }
 }
 
@@ -67,9 +67,7 @@ body,
 body {
   margin: 0;
   padding: 0;
-  background:
-    radial-gradient(circle at top, rgba(247, 245, 243, 0.04), transparent 24%),
-    linear-gradient(180deg, #101010 0%, #0b0b0b 100%);
+  background: var(--color-void);
   color: var(--color-text-primary);
   font-family: var(--font-interface);
   -webkit-font-smoothing: antialiased;
@@ -110,7 +108,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--color-border-focus);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -168,6 +166,6 @@ a:focus-visible {
 }
 
 ::selection {
-  background: var(--color-signal-nominal);
+  background: var(--color-green);
   color: #000;
 }

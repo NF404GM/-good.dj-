@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { spawn, ChildProcess } from 'child_process';
 import { getCachedLicense, verifyLicense, clearLicense, needsRevalidation } from './license.ts';
 import { setupIpcHandlers } from './ipcHandlers.ts';
+import { disposeRuntime } from './stemSeparator.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -219,9 +220,12 @@ app.on('window-all-closed', () => {
     }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
     cleanupIpcHandlers?.();
     cleanupIpcHandlers = null;
+
+    // SB-2 fix: Release cached ONNX runtime session
+    await disposeRuntime();
 
     if (serverProcess) {
         serverProcess.kill();

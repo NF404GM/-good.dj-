@@ -109,6 +109,11 @@ export const Crossfader: React.FC<CrossfaderProps> = ({ value = 50, onChange }) 
                             onDoubleClick={() => onChange?.(50)}
                             className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0"
                             title="Crossfader. Double-click to return to center."
+                            aria-label="Crossfader"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Math.round(value)}
+                            aria-valuetext={getMixLabel(value)}
                         />
                     </div>
                 </div>
