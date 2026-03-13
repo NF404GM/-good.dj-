@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Track {
@@ -21,8 +21,8 @@ model Track {
   analyzed  Boolean  @default(false)
   
   // Track specific features
-  beatsJson String?  @db.Text // Large array of beat floats
-  filePath  String?  @db.Text // Path to the actual uploaded audio file
+  beatsJson String?  // Large array of beat floats
+  filePath  String?  // Path to the actual uploaded audio file
   
   // Relations
   playlistTracks PlaylistTrack[]
@@ -64,6 +64,6 @@ model Recording {
   id           String   @id @default(uuid())
   title        String
   duration     Float
-  filePath     String   @db.Text
+  filePath     String
   dateRecorded DateTime @default(now())
 }

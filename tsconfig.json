@@ -22,6 +22,8 @@
         "./src/*"
       ]
     },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
