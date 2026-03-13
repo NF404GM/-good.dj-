@@ -182,6 +182,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
                 >
                     <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Settings"
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
