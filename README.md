@@ -2,7 +2,8 @@
 
 ![good.dj hero](assets/readme/hero.png)
 
-### **A browser-native DJ instrument for performance, creation, and recording.**
+## **A browser-native DJ instrument for performance, creation, and recording.**
+
 **Built for the stage, the studio, and the flow of making and recording mixes.**
 
 ---
@@ -21,12 +22,14 @@
 
 ## 1) Core Capabilities
 
-### Real-Time Stems
+## Real-Time Stems
+
 Simulated AI stem separation allows you to isolate drums, bass, vocals, and synths in real-time, enabling seamless transitions and creative mashups.
 
 ![Mixer Section](assets/readme/mixer.png)
 
-### Tactile Performance Pads
+## Tactile Performance Pads
+
 High-contrast, low-latency Hot Cue pads with springy tactile feedback and glowing physical-state indicators.
 
 ![Performance Pads](assets/readme/pads.png)
@@ -58,17 +61,20 @@ Beyond the booth, **good.dj** is a space for **exploring ideas**. Whether you’
 **Prerequisites:** Node.js 18+
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/NF404GM/-good.dj-.git
    cd -good.dj-
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 3. **Start the instrument:**
+
    ```bash
    npm run start
    ```
@@ -77,6 +83,6 @@ Beyond the booth, **good.dj** is a space for **exploring ideas**. Whether you’
 
 ---
 
-*A product of the good. company — Version 1.0 (March 2026)*
+> *A product of the good. company — Version 1.0 (March 2026)*
 
 ![good mark](assets/icon.png)
