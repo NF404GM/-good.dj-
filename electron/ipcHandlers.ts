@@ -237,17 +237,27 @@ function registerIpcHandlers(uploadsDir: string) {
 
         try {
             fs.renameSync(sourcePath, finalPath);
-        } catch {
-            fs.copyFileSync(sourcePath, finalPath);
-            const srcStat = fs.statSync(sourcePath);
-            const dstStat = fs.statSync(finalPath);
+        } catch (renameErr: unknown) {
+            const err = renameErr as NodeJS.ErrnoException;
+            if (err.code === 'EXDEV') {
+                fs.copyFileSync(sourcePath, finalPath);
+                const srcStat = fs.statSync(sourcePath);
+                const dstStat = fs.statSync(finalPath);
 
-            if (dstStat.size !== srcStat.size) {
-                fs.unlinkSync(finalPath);
-                throw new Error('Recording copy verification failed - source preserved.');
+                if (dstStat.size !== srcStat.size) {
+                    try {
+                        fs.unlinkSync(finalPath);
+                    } catch {
+                        // Ignore cleanup failures for partial copies.
+                    }
+
+                    throw new Error('Recording copy failed: size mismatch. Original recording preserved.');
+                }
+
+                fs.unlinkSync(sourcePath);
+            } else {
+                throw renameErr;
             }
-
-            fs.unlinkSync(sourcePath);
         }
 
         const recording = await prisma.recording.create({
