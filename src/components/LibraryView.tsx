@@ -691,17 +691,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
                                 }
                             }}
                         >
-                            <div className="grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/6 px-4 py-3">
-                                <SectionLabel>+</SectionLabel>
-                                <SectionLabel>Track</SectionLabel>
-                                <SectionLabel>Artist</SectionLabel>
-                                <SectionLabel>BPM</SectionLabel>
-                                <SectionLabel>Key</SectionLabel>
-                                <SectionLabel>Rating</SectionLabel>
-                                <SectionLabel>Time</SectionLabel>
+                            <div role="row" className="grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/6 px-4 py-3">
+                                <div role="columnheader"><SectionLabel>+</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'title' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Track</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'artist' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Artist</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'bpm' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>BPM</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'key' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Key</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'rating' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Rating</SectionLabel></div>
+                                <div role="columnheader"><SectionLabel>Time</SectionLabel></div>
                             </div>
 
-                            <div className="custom-scrollbar flex-1 overflow-y-auto">
+                            <div role="grid" aria-label="Track library" className="custom-scrollbar flex-1 overflow-y-auto">
                                 {filteredTracks.length === 0 ? (
                                     <div className="flex h-full min-h-[320px] items-center justify-center px-8">
                                         <div className="text-center">
@@ -730,6 +730,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
                                                 whileHover={{ x: 2 }}
                                                 onDragStart={(event) => handleDragStart(event as unknown as React.DragEvent, track.id)}
                                                 onClick={(event) => handleTrackClick(event, track.id)}
+                                                role="row"
                                                 className={`group relative grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/[0.04] px-4 py-3 transition-all ${
                                                     isSelected
                                                         ? 'bg-signal-sync/14'
