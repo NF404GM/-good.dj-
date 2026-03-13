@@ -3,7 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Track {
@@ -20,9 +21,9 @@ model Track {
   analyzed  Boolean  @default(false)
   
   // Track specific features
-  beatsJson String?  // JSON stringified array of beat floats
-  filePath  String?  // Path to the actual uploaded audio file on the server
-
+  beatsJson String?  @db.Text // Large array of beat floats
+  filePath  String?  @db.Text // Path to the actual uploaded audio file
+  
   // Relations
   playlistTracks PlaylistTrack[]
   cuePoints      CuePoint[]
@@ -51,10 +52,18 @@ model PlaylistTrack {
 model CuePoint {
   id       String @id @default(uuid())
   trackId  String
-  index    Int     // 0-7 for hotcues
+  index    Int    // 0-7 for hotcues
   position Float  // Position in seconds
   
   track    Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@unique([trackId, index]) // A track can have only one cue point per index
+}
+
+model Recording {
+  id           String   @id @default(uuid())
+  title        String
+  duration     Float
+  filePath     String   @db.Text
+  dateRecorded DateTime @default(now())
 }
