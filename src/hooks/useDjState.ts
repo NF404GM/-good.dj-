@@ -363,6 +363,7 @@ function useDjStore() {
 
         return () => {
             AudioEngine.onTrackEnd = null;
+            midiServiceRef.current?.destroy();
             cleanupProlink.forEach((cleanup) => cleanup());
         };
     }, []);
@@ -772,24 +773,3 @@ export function useDjState() {
     }
     return context;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
