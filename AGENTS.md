@@ -116,8 +116,6 @@ During UI/UX work, do not modify these unless explicitly requested:
 
 - `api/`
 - [vercel.json](C:\Users\tahme\OneDrive\Desktop\good.dj\vercel.json)
-- [scripts/build-electron.mjs](C:\Users\tahme\OneDrive\Desktop\good.dj\scripts\build-electron.mjs)
-- [electron-builder.config.cjs](C:\Users\tahme\OneDrive\Desktop\good.dj\electron-builder.config.cjs)
 
 ## Core Files
 

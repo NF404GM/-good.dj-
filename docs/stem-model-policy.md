@@ -1,31 +1,14 @@
-# Stem Model Distribution Policy
+# Stem Model Policy
 
-good.dj supports two stem-model release paths.
+good.DJ currently uses EQ-based frequency filtering for stem controls (bass, mid, high bands).
 
-## Default public build
+AI-powered stem separation using ONNX models is planned for a future release. This will enable real drums, bass, vocals, and harmonic separation directly in the browser using WebAssembly.
 
-```bash
-npm run electron:build
-```
+## Current Status
 
-This build does not bundle a stem model by default. Users can install a local ONNX model from the in-app Settings panel.
+- EQ-based filtering: Available now
+- AI stem separation: Coming soon (web-native via ONNX + WASM)
 
-## Free noncommercial build with bundled stems
+## Attribution
 
-```bash
-npm run stems:download-test-model
-npm run electron:build:free-with-stem-model
-```
-
-Use this only when you are intentionally distributing a free noncommercial release and you are comfortable with the model attribution and license terms.
-
-That build also copies these release-side docs automatically:
-
-- `release/LICENSES-THIRD-PARTY.md`
-- `release/STEM-MODEL-POLICY.md`
-
-## Working rule
-
-- Paid or monetized releases: do not bundle the current test model.
-- Free noncommercial giveaway releases: bundling is an explicit build choice.
-- Local development and internal testing: keep the model in `resources/models/` or install it from Settings.
+When AI stem models are integrated, proper attribution and licensing will be maintained per model provider requirements.
