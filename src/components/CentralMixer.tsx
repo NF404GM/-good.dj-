@@ -77,7 +77,7 @@ const ChannelStrip: React.FC<{
     const [fxLabel1, fxLabel2] = getFxLabels(fx.activeType);
 
     return (
-        <div className="surface-panel flex min-w-0 flex-1 flex-col gap-3 rounded-panel p-3">
+        <div className="surface-panel flex min-w-0 flex-1 flex-col gap-3 rounded-panel p-3" role="group" aria-label={`Deck ${deckId} Mixer Channel`}>
             <div className="flex items-center justify-between">
                 <div>
                     <SectionLabel>Channel {deckId}</SectionLabel>
@@ -237,7 +237,7 @@ export const CentralMixer: React.FC<CentralMixerProps> = ({ state, dispatch }) =
     const masterLevel = Math.max(state.decks.A.level, state.decks.B.level);
 
     return (
-        <div className="flex w-[430px] shrink-0 flex-col gap-2">
+        <div className="flex w-[430px] shrink-0 flex-col gap-2" role="group" aria-label="Mixer">
             <div className="surface-panel flex items-center justify-between rounded-panel px-4 py-3">
                 <div>
                     <SectionLabel>Mixer</SectionLabel>

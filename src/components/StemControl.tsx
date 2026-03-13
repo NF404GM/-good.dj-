@@ -91,6 +91,10 @@ export const HorizontalBar: React.FC<{
           onDoubleClick={onDoubleClick}
           className="absolute inset-0 opacity-0 cursor-col-resize active:cursor-grabbing"
           title={label}
+          aria-label={label || 'Parameter'}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(value * 100)}
         />
       </div>
       {label && (
@@ -164,6 +168,10 @@ export const VerticalFader: React.FC<{
           }}
           onDoubleClick={onDoubleClick}
           className="absolute inset-0 w-full h-full opacity-0 cursor-ns-resize appearance-slider-vertical z-20"
+          aria-label={label ? `${label} Volume` : 'Volume'}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(value * 100)}
         />
       </div>
       {label && <span className="text-[6.5px] font-mono font-bold text-text-secondary mt-1 opacity-60 group-hover:opacity-100 transition-opacity uppercase tracking-[0.15em]">{label}</span>}
@@ -244,6 +252,8 @@ export const StemControl: React.FC<StemControlProps> = ({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.9, y: 1 }}
           onClick={onToggle}
+          aria-label={`${isActive ? 'Mute' : 'Unmute'} ${label}`}
+          aria-pressed={isActive}
           className="w-full h-4 flex flex-col items-center justify-center border transition-all duration-100 relative overflow-hidden rounded-btn-sm
                 bg-canvas border-white/5 opacity-80 hover:opacity-100
                 group-data-[active=true]:opacity-100 group-data-[active=true]:border-white/20 group-data-[active=true]:shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"

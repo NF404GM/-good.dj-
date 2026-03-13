@@ -331,11 +331,13 @@ function registerIpcHandlers(uploadsDir: string) {
                 abortController.signal
             );
 
+            // SB-1 fix: Convert Float32Array to plain Array for IPC serialization.
+            // Electron's structured clone loses TypedArray type information.
             return {
-                drums: stems.drums,
-                bass: stems.bass,
-                other: stems.other,
-                vocals: stems.vocals,
+                drums: Array.from(stems.drums),
+                bass: Array.from(stems.bass),
+                other: Array.from(stems.other),
+                vocals: Array.from(stems.vocals),
                 sampleRate: stems.sampleRate,
             };
         } finally {

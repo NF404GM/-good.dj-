@@ -65,7 +65,7 @@ const RootLayout: React.FC<{
             </div>
 
             <div className="relative z-10 flex h-full w-full flex-col">
-                <header className="surface-panel z-50 mx-2 mt-2 flex h-12 shrink-0 items-center justify-between rounded-panel px-4">
+                <header role="banner" className="surface-panel z-50 mx-2 mt-2 flex h-12 shrink-0 items-center justify-between rounded-panel px-4">
                     <div className="flex items-center gap-3">
                         <div className={`h-2 w-2 rounded-full transition-colors duration-500 ${midiDevice ? 'bg-signal-nominal animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-text-secondary/50'}`} />
                         <span className="text-sm font-bold tracking-tight">good.<span className="text-text-secondary">DJ</span></span>
@@ -145,7 +145,7 @@ const RootLayout: React.FC<{
                     </div>
                 </header>
 
-                <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
+                <main role="main" className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
                     {children}
                 </main>
 
@@ -153,7 +153,7 @@ const RootLayout: React.FC<{
                     <div className="flex gap-4">
                         <span>CORE v1.0.0</span>
                         <span>{shellBadge} MIDI: {midiDevice ? 'ACTIVE' : 'IDLE'}</span>
-                        <span className="hidden lg:block">48kHz</span>
+                        <span className="hidden lg:block">44.1kHz</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="text-text-data/40">MARCH 2026</span>
@@ -204,13 +204,13 @@ function AppContent() {
                             className={`relative flex shrink-0 gap-2 overflow-hidden transition-all duration-[350ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${currentView === AppView.LIBRARY ? 'max-h-0 flex-[0] p-0 opacity-0 pointer-events-none' : 'max-h-[2000px] flex-[3] border-b border-white/5 opacity-100'}`}
                         >
                             <div className="flex min-w-0 flex-[4] flex-col" data-boot="deck-a">
-                                <Deck deckState={decks.A} dispatch={dispatch} activeColor="var(--signal-nominal)" />
+                                <Deck deckState={decks.A} dispatch={dispatch} activeColor="var(--color-cyan)" />
                             </div>
                             <div data-boot="mixer">
                                 <CentralMixer state={state} dispatch={dispatch} />
                             </div>
                             <div className="flex min-w-0 flex-[4] flex-col" data-boot="deck-b">
-                                <Deck deckState={decks.B} dispatch={dispatch} activeColor="var(--signal-nominal)" />
+                                <Deck deckState={decks.B} dispatch={dispatch} activeColor="var(--color-amber)" />
                             </div>
                         </div>
 

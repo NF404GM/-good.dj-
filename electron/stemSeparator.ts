@@ -69,6 +69,18 @@ function resetRuntime() {
     runtime = null;
 }
 
+/** SB-2 fix: Release the cached ONNX runtime session on app quit. */
+export async function disposeRuntime() {
+    if (runtime?.session) {
+        try {
+            await runtime.session.release();
+        } catch (e) {
+            console.warn('[StemSeparator] Error releasing ONNX session:', e);
+        }
+    }
+    runtime = null;
+}
+
 function getBundledModelDirectory() {
     return app.isPackaged
         ? path.join(process.resourcesPath, 'models')
