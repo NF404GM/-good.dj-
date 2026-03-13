@@ -19,7 +19,7 @@ async function initEssentia() {
         return essentia;
     }
 
-    const wasmModule = await import('essentia.js/dist/essentia-wasm.web.js');
+    const wasmModule = await import('essentia.js/dist/essentia-wasm.es.js');
     const coreModule = await import('essentia.js/dist/essentia.js-core.es.js');
     const EssentiaWASM = (wasmModule as any).default ?? (wasmModule as any).EssentiaWASM ?? wasmModule;
     const EssentiaCore = (coreModule as any).default ?? coreModule;
@@ -73,39 +73,48 @@ self.onmessage = async (e: MessageEvent) => {
                 let windowed: any = null;
                 let spectrum: any = null;
                 let peaks: any = null;
+                let whitening: any = null;
                 let hpcp: any = null;
 
                 try {
                     const frame = signal.slice(i, i + frameSize);
                     frameVec = essentiaInstance.arrayToVector(frame);
-                    windowed = essentiaInstance.Windowing(frameVec, true, frameSize, 'hann', 0, true);
+                    windowed = essentiaInstance.Windowing(frameVec, true, frameSize, 'blackmanharris62', 0, true);
                     spectrum = essentiaInstance.Spectrum(windowed.frame, frameSize);
                     peaks = essentiaInstance.SpectralPeaks(
                         spectrum.spectrum,
+                        0.00001,
                         5000,
                         60,
-                        0,
                         100,
-                        'height',
+                        'magnitude',
                         analysisSampleRate
                     );
 
                     if (peaks.frequencies.size() > 0) {
-                        hpcp = essentiaInstance.HPCP(
+                        whitening = essentiaInstance.SpectralWhitening(
+                            spectrum.spectrum,
                             peaks.frequencies,
                             peaks.magnitudes,
+                            5000,
+                            analysisSampleRate
+                        );
+                        hpcp = essentiaInstance.HPCP(
+                            peaks.frequencies,
+                            whitening.magnitudes,
                             true,
                             500,
-                            0.5,
                             4,
                             5000,
-                            true,
+                            false,
                             40,
+                            false,
                             'unitMax',
                             440,
+                            analysisSampleRate,
                             12,
-                            0.5,
-                            'cosine'
+                            'cosine',
+                            1
                         );
 
                         const hpcpArr = essentiaInstance.vectorToArray(hpcp.hpcp);
@@ -122,6 +131,7 @@ self.onmessage = async (e: MessageEvent) => {
                     spectrum?.spectrum?.delete?.();
                     peaks?.frequencies?.delete?.();
                     peaks?.magnitudes?.delete?.();
+                    whitening?.magnitudes?.delete?.();
                     hpcp?.hpcp?.delete?.();
                 }
             }

@@ -44,6 +44,12 @@ function getUserDataPath(): string {
     return app.getPath('userData');
 }
 
+function getPreloadPath(): string {
+    return app.isPackaged
+        ? path.join(__dirname, 'preload.js')
+        : path.join(__dirname, '../electron-dist/preload.js');
+}
+
 /**
  * Silently checks GitHub Releases for a newer version.
  * 2-second timeout. Never throws. Fires after window loads.
@@ -96,7 +102,7 @@ function createWindow(): void {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js'),
+            preload: getPreloadPath(),
         }
     });
 

@@ -560,8 +560,8 @@ function useDjStore() {
                 dispatch({ type: 'TRACK_ENDED', deckId: action.deckId });
             }
 
-            // Try to load audio blob from IndexedDB
-            const blob = await goodDB.getTrackBlob(action.track.id);
+            // Resolve the track audio from whichever storage backend owns this entry.
+            const blob = await goodDB.getTrackBlob(action.track.id, action.track.filePath);
             if (blob) {
                 dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: true });
                 try {
@@ -580,8 +580,11 @@ function useDjStore() {
                 } catch (e) { console.error("DB Load Error", e); }
                 dispatch({ type: 'SET_LOADING', deckId: action.deckId, isLoading: false });
             } else {
-                // Track is from mock library — no audio blob exists
-                // Still update the deck state so user sees the track info
+                // Metadata-only fallback: keep the deck label populated even if audio resolution fails.
+                console.warn('[useDjState] Could not resolve playable audio for library track:', {
+                    trackId: action.track.id,
+                    filePath: action.track.filePath,
+                });
                 dispatch({ type: 'LOAD_TRACK', deckId: action.deckId, track: action.track, hasAudioBuffer: false });
             }
             return;
@@ -653,8 +656,8 @@ function useDjStore() {
                             }
                         }
 
-                        await goodDB.saveTrack(track, file);
-                        dispatch({ type: 'LIBRARY_ADD_TRACK', track });
+                        const savedTrack = await goodDB.saveTrack(track, file);
+                        dispatch({ type: 'LIBRARY_ADD_TRACK', track: savedTrack });
                         console.log(`[good.dj] SUCCESS: Imported ${file.name}`);
                     } catch (fileErr) {
                         console.error(`[useDjState] Failed to process file ${file.name}:`, fileErr);

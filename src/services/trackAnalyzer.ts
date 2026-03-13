@@ -127,61 +127,66 @@ function detectBeats(essentia: any, vectorSignal: any): number[] {
  * determines the overall key and scale.
  */
 function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { key: string; scale: string; strength: number } {
-    let frames: any = null;
     try {
-        // Use frame-based analysis for more robust key detection
         const frameSize = 4096;
         const hopSize = 2048;
+        const signal = essentia.vectorToArray(vectorSignal) as Float32Array;
+        const analysisSampleRate = sampleRate;
+        const hpcpAccumulator = new Float32Array(12);
+        let validFrames = 0;
 
-        // Windowing and spectrum for each frame
-        frames = essentia.FrameGenerator(vectorSignal, frameSize, hopSize);
-        const numFrames = frames.size();
-
-        if (numFrames === 0) {
+        if (!signal || signal.length < frameSize) {
             return { key: 'C', scale: 'major', strength: 0 };
         }
 
-        // Accumulate HPCP across all frames
-        const hpcpAccumulator = new Float32Array(12).fill(0);
-        let validFrames = 0;
-
-        for (let i = 0; i < numFrames; i++) {
-            let frame: any = null;
+        for (let offset = 0; offset + frameSize < signal.length; offset += hopSize) {
+            let frameVector: any = null;
             let windowed: any = null;
             let spectrum: any = null;
             let peaks: any = null;
+            let whitening: any = null;
             let hpcp: any = null;
 
             try {
-                frame = frames.get(i);
-                windowed = essentia.Windowing(frame, true, frameSize, 'hann', 0, true);
+                const frame = signal.slice(offset, offset + frameSize);
+                frameVector = essentia.arrayToVector(frame);
+                windowed = essentia.Windowing(frameVector, true, frameSize, 'blackmanharris62', 0, true);
                 spectrum = essentia.Spectrum(windowed.frame, frameSize);
                 peaks = essentia.SpectralPeaks(
                     spectrum.spectrum,
-                    5000,  // maxFrequency
-                    60,    // maxPeaks
-                    0,     // magnitudeThreshold
-                    100,   // minFrequency
-                    'height', // orderBy
-                    sampleRate
+                    0.00001,
+                    5000,
+                    60,
+                    100,
+                    'magnitude',
+                    analysisSampleRate
                 );
 
                 if (peaks.frequencies.size() > 0) {
-                    hpcp = essentia.HPCP(
+                    whitening = essentia.SpectralWhitening(
+                        spectrum.spectrum,
                         peaks.frequencies,
                         peaks.magnitudes,
-                        true,   // harmonics
-                        500,    // bandPreset
-                        0.5,    // bandSplitFrequency — not relevant with split=false
-                        4,      // harmonicsNumber
-                        5000,   // maxFrequency
-                        true,   // maxShifted
-                        40,     // minFrequency
-                        'unitMax', // normalize
-                        440,    // referenceFrequency
-                        12,     // size
-                        0.5,    // weightType (use 'cosine')
-                        'cosine' // windowSize
+                        5000,
+                        analysisSampleRate
+                    );
+
+                    hpcp = essentia.HPCP(
+                        peaks.frequencies,
+                        whitening.magnitudes,
+                        true,
+                        500,
+                        4,
+                        5000,
+                        false,
+                        40,
+                        false,
+                        'unitMax',
+                        440,
+                        analysisSampleRate,
+                        12,
+                        'cosine',
+                        1
                     );
                     const hpcpArray = essentia.vectorToArray(hpcp.hpcp);
                     for (let j = 0; j < 12; j++) {
@@ -189,13 +194,15 @@ function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { ke
                     }
                     validFrames++;
                 }
+            } catch {
+                // Skip malformed or silent frames and continue.
             } finally {
-                // Cleanup frame-level vectors
-                frame?.delete?.();
+                frameVector?.delete?.();
                 windowed?.frame?.delete?.();
                 spectrum?.spectrum?.delete?.();
                 peaks?.frequencies?.delete?.();
                 peaks?.magnitudes?.delete?.();
+                whitening?.magnitudes?.delete?.();
                 hpcp?.hpcp?.delete?.();
             }
         }
@@ -225,8 +232,6 @@ function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { ke
     } catch (err) {
         console.warn('[TrackAnalyzer] Key estimation failed:', err);
         return { key: 'C', scale: 'major', strength: 0 };
-    } finally {
-        if (frames) frames.delete();
     }
 }
 

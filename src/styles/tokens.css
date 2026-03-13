@@ -1,68 +1,75 @@
 :root {
-  /* ── good. mode BASE PALETTE (§7.2) ── */
-  --color-bg-base:        #0f0f0f;  /* matte black */
-  --color-bg-panel:       #1a1a1a;  /* panel surface */
-  --color-bg-elevated:    #222222;  /* raised elements */
-  --color-bg-input:       #1f1f1f;  /* charcoal */
-  
-  /* ── TEXT & TYPOGRAPHY (§8) ── */
-  --color-text-primary:   #fafafa;  /* pure off-white */
-  --color-text-secondary: #d1cbc1;  /* boosted warm gray */
-  --color-text-data:     #b0b0b0;  /* boosted machine text */
-  --color-text-accent:    #e0d9d0;  /* sand highlight */
-  
-  /* ── SIGNAL & FUNCTIONAL (§7.4) ── */
-  --color-signal-nominal: #10b981;  /* emerald green */
-  --color-signal-sync:    #3b82f6;  /* precision blue */
-  --color-signal-peak:    #ef4444;  /* clip red */
-  --color-signal-warn:    #f59e0b;  /* amber caution */
-  
-  /* ── STEM IDENTITIES (§10.1) ── */
-  --color-stem-drums:     #3b82f6;  /* drum blue */
-  --color-stem-bass:      #8b5cf6;  /* bass purple */
-  --color-stem-vocals:    #f59e0b;  /* vocal amber */
-  --color-stem-harmonic:  #10b981;  /* harmonic emerald */
+  --color-bg-base: #0f0f0f;
+  --color-bg-panel: #171717;
+  --color-bg-elevated: #1e1e1e;
+  --color-bg-input: #121212;
 
-  /* ── BORDERS & INTERFACE ── */
-  --color-border-subtle:  rgba(255, 255, 255, 0.05);
-  --color-border-bold:    #bfb7ad;
-  
-  /* ── TYPOGRAPHY TOKENS ── */
-  --font-interface: 'Inter', sans-serif;
-  --font-data:      'JetBrains Mono', 'Roboto Mono', monospace;
+  --color-text-primary: #f7f5f3;
+  --color-text-secondary: #c7c0b8;
+  --color-text-data: #8f8b86;
+  --color-text-accent: #e0d9d0;
+  --color-text-berry: #f7f5f3;
+  --color-text-mono: #d9d4cf;
+
+  --color-signal-nominal: #10b981;
+  --color-signal-sync: #3b82f6;
+  --color-signal-peak: #ef4444;
+  --color-signal-warn: #f59e0b;
+  --color-signal-transient: #f7f5f3;
+
+  --color-stem-drums: #3b82f6;
+  --color-stem-bass: #8b5cf6;
+  --color-stem-vocals: #f59e0b;
+  --color-stem-harmonic: #10b981;
+
+  --color-hw-sand: #d6cfc6;
+  --color-hw-olive: #8a8b7f;
+  --color-hw-warm: #bfb7ad;
+
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
+  --color-border-bold: rgba(214, 207, 198, 0.35);
+  --color-border-focus: rgba(247, 245, 243, 0.26);
+
+  --font-interface: "Inter", sans-serif;
+  --font-data: "JetBrains Mono", "Roboto Mono", monospace;
   --tracking-tight: -0.05em;
-  --tracking-wide:  0.15em;
-  
-  /* ── RADIUS ── */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
+  --tracking-wide: 0.15em;
 
-  /* ── ANIMATION TOKENS (§12) ── */
-  --spring-snappy:   cubic-bezier(0.2, 0.8, 0.2, 1);
-  --spring-bouncy:   cubic-bezier(0.18, 0.88, 0.28, 1.12);
-  --spring-lofi:     cubic-bezier(0.25, 0.72, 0.3, 1);
-  
-  --transition-ui:   200ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-sm: 3px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-btn-sm: 4px;
+  --radius-btn-lg: 10px;
+  --radius-panel: 14px;
 
-  /* ── TACTILE DEPTH ── */
-  --shadow-tactile-out:  0 2px 0 0 rgba(0,0,0,0.8), 0 4px 8px rgba(0,0,0,0.4);
-  --shadow-tactile-in:   inset 0 1px 2px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.05);
+  --spring-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring-bouncy: cubic-bezier(0.18, 0.88, 0.28, 1.12);
+  --spring-lofi: cubic-bezier(0.25, 0.72, 0.3, 1);
+  --transition-ui: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-fast: 110ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* ── BACKWARD COMPATIBILITY (Temporary) ── */
+  --shadow-huge: 0 20px 60px rgba(0, 0, 0, 0.5);
+  --shadow-tactile-out: 0 2px 0 rgba(0, 0, 0, 0.9), 0 10px 24px rgba(0, 0, 0, 0.42);
+  --shadow-tactile-in: inset 0 1px 2px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+
   --canvas: var(--color-bg-base);
   --surface-idle: var(--color-bg-panel);
   --surface-active: var(--color-bg-elevated);
-  --surface-raised: var(--color-bg-elevated);
+  --surface-raised: color-mix(in srgb, var(--color-bg-elevated) 76%, white 24%);
   --text-primary: var(--color-text-primary);
   --text-secondary: var(--color-text-secondary);
   --text-data: var(--color-text-data);
+  --text-berry: var(--color-text-berry);
+  --text-mono: var(--color-text-mono);
   --signal-clipping: var(--color-signal-peak);
   --signal-nominal: var(--color-signal-nominal);
   --signal-sync: var(--color-signal-sync);
+  --signal-transient: var(--color-signal-transient);
   --stem-drums: var(--color-stem-drums);
   --stem-bass: var(--color-stem-bass);
   --stem-vocals: var(--color-stem-vocals);
   --stem-harmonic: var(--color-stem-harmonic);
+  --hw-sand: var(--color-hw-sand);
+  --hw-olive: var(--color-hw-olive);
+  --hw-warm: var(--color-hw-warm);
 }

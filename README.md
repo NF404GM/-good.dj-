@@ -1,88 +1,176 @@
-# good.dj
+# good.DJ
 
-![good.dj hero](assets/readme/hero.png)
+![good.DJ hero](assets/readme/hero.png)
 
-## **A browser-native DJ instrument for performance, creation, and recording.**
+good.DJ is a premium Electron DJ instrument from the good. company: a two-deck performance environment with an integrated library, tactile transport, recording, analysis, MIDI support, and an evolving neural-stems pipeline.
 
-**Built for the stage, the studio, and the flow of making and recording mixes.**
+[Code](https://github.com/NF404GM/-good.dj-) | [Issues](https://github.com/NF404GM/-good.dj-/issues)
 
----
+## What It Is
 
-[**Explore the Code**](https://github.com/NF404GM/-good.dj-) • [**Report a Bug**](https://github.com/NF404GM/-good.dj-/issues)
+good.DJ is built around a simple idea: creative software should feel like a well-made instrument.
 
-## 0) Principle-First Design
+The product direction is:
 
-**good.dj** is built on the philosophy of the **good. company**:
+- calm, premium, and performance-first
+- tactile without fake-hardware cosplay
+- creator-first instead of feature-bloated
+- visually restrained, with signal color only for meaning
 
-- **Essentialism**: Only what protects flow or increases output.
-- **Precision Craft**: Every button depress, every fader snap, every motion has mass.
-- **Invisible Complexity**: Pro-grade DSP power delivered through a quiet, tactile interface.
+This repo currently contains:
 
----
+- a desktop Electron shell
+- a React + TypeScript renderer
+- a local Express + Prisma + SQLite backend
+- a Web Audio performance engine
+- waveform, BPM, and key analysis
+- integrated collection and recordings workflows
+- MIDI and ProLink groundwork
+- an ONNX-based stem separation foundation for Electron
 
-## 1) Core Capabilities
+## Current Product Focus
 
-## Real-Time Stems
+The current build is in an active production-polish phase.
 
-Simulated AI stem separation allows you to isolate drums, bass, vocals, and synths in real-time, enabling seamless transitions and creative mashups.
+Primary areas of focus:
 
-![Mixer Section](assets/readme/mixer.png)
+- UI/UX facelift toward a ship-ready good. company design language
+- deck transport and performance-surface refinement
+- library workflow polish
+- stem-model readiness and runtime hardening
+- desktop packaging and release discipline
 
-## Tactile Performance Pads
+## Core Capabilities
 
-High-contrast, low-latency Hot Cue pads with springy tactile feedback and glowing physical-state indicators.
+- Two-deck performance workflow
+- Integrated library and inspector workspace
+- Recording and playback inside the app
+- BPM and key analysis
+- Waveform rendering and overview
+- MIDI controller support
+- Electron file access and local backend integration
+- Optional bundled free noncommercial ONNX stem-model release path
 
-![Performance Pads](assets/readme/pads.png)
+## Tech Stack
 
-- **Hardware Integration**: Full Web MIDI support for industry-standard DJ controllers.
-- **Pro Audio Engine**: High-performance Web Audio API graph with ultra-low latency.
-- **Session Recording**: Capture your mixes and ideas instantly within the browser.
-- **Fluid Grid**: Precision beat-matching and tempo control that feels like equipment, not an app.
+- Electron 40
+- React 19
+- TypeScript 5
+- Vite 6
+- Tailwind CSS 4
+- Framer Motion
+- Prisma 6 + SQLite
+- Express 5
+- Essentia.js
+- onnxruntime-node
 
----
+## Getting Started
 
-## 2) The Studio & The Flow
+Prerequisites:
 
-Beyond the booth, **good.dj** is a space for **exploring ideas**. Whether you’re hanging out and jamming or recording a polished set, the instrument gets out of the way so the music shines.
+- Node.js 20+
+- npm
 
----
+Install dependencies:
 
-## 3) Technical Architecture
+```bash
+npm install
+```
 
-- **Framework**: React 19 (Concurrent Mode)
-- **Animation**: `framer-motion` (Physics-based springs)
-- **Audio Engine**: Web Audio API (Multi-node DSP chain)
-- **Styling**: strictly monochrome "Hardware Sand" (#d6cfc6) on deep black.
+Run the desktop app in development:
 
----
+```bash
+npm run electron:dev
+```
 
-## 4) Local Installation
+Run the renderer only in the browser:
 
-**Prerequisites:** Node.js 18+
+```bash
+npm run dev
+```
 
-1. **Clone the repository:**
+Run the embedded backend by itself:
 
-   ```bash
-   git clone https://github.com/NF404GM/-good.dj-.git
-   cd -good.dj-
-   ```
+```bash
+npm run backend
+```
 
-2. **Install dependencies:**
+## Build Commands
 
-   ```bash
-   npm install
-   ```
+Build the renderer:
 
-3. **Start the instrument:**
+```bash
+npm run build
+```
 
-   ```bash
-   npm run start
-   ```
+Build the Electron main/preload output:
 
-   *Note: This starts both the frontend development server and the backend proxy.*
+```bash
+npm run build:electron
+```
 
----
+Build the packaged desktop app:
 
-> *A product of the good. company — Version 1.0 (March 2026)*
+```bash
+npm run electron:build
+```
 
-![good mark](assets/icon.png)
+Build the free noncommercial release with the bundled stem model:
+
+```bash
+npm run electron:build:free-with-stem-model
+```
+
+## Stem Model Notes
+
+The Electron stem pipeline is designed to support a local ONNX model.
+
+Helpful commands:
+
+```bash
+npm run stems:download-test-model
+```
+
+Important note:
+
+- the bundled-model release path is intended for the free noncommercial build flow
+- check [LICENSES-THIRD-PARTY.md](LICENSES-THIRD-PARTY.md) and the model policy docs before distribution
+
+## Repo Design System
+
+This repo now includes a local product-system layer for Codex and contributors.
+
+Start here:
+
+- [AGENTS.md](AGENTS.md)
+- [docs/design.md](docs/design.md)
+- [docs/gooddj-design-language.md](docs/gooddj-design-language.md)
+- [docs/gooddj-layout-system.md](docs/gooddj-layout-system.md)
+- [docs/gooddj-interaction-states.md](docs/gooddj-interaction-states.md)
+- [docs/gooddj-component-registry.md](docs/gooddj-component-registry.md)
+
+Repo-local Codex skills live in:
+
+- [\.agents\skills](.agents/skills)
+
+These documents define the current good.DJ design language, component rules, layout system, motion expectations, accessibility standards, and UI review discipline.
+
+## Quality Checks
+
+Typecheck:
+
+```bash
+npx tsc --noEmit
+```
+
+Full check:
+
+```bash
+npm run check
+```
+
+## Product Principle
+
+Strip it down until it is good, then make it better through craft.
+
+good.DJ should feel fast, inevitable, and trustworthy. The software should disappear and the mix should stay in focus.

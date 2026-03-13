@@ -208,7 +208,7 @@ export const StemControl: React.FC<StemControlProps> = ({
 }) => {
   return (
     <div
-      className={`flex flex-col items-center gap-0.5 p-1 bg-surface-idle border border-white/5 rounded-Panel group select-none ${className}`}
+      className={`flex flex-col items-center gap-0.5 p-1 bg-surface-idle border border-white/5 rounded-panel group select-none ${className}`}
       data-active={isActive}
     >
 

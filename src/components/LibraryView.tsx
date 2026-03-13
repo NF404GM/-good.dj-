@@ -1,8 +1,7 @@
-
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useDjState } from '../hooks/useDjState';
-import { LibraryTrack, DeckAction, Playlist } from '../types';
+import { DeckAction, LibraryTrack, Playlist } from '../types';
 import { OptimizedImage } from './OptimizedImage';
 import { isHarmonicMatch, shiftCamelotKey } from '../services/trackAnalyzer';
 import { API_BASE, SERVER_BASE } from '../services/config';
@@ -12,34 +11,140 @@ interface LibraryViewProps {
     className?: string;
 }
 
-const StarRating: React.FC<{ rating: number; onChange: (r: number) => void }> = ({ rating, onChange }) => {
-    const [hoverRating, setHoverRating] = useState<number | null>(null);
+interface RecordingItem {
+    id: string;
+    title: string;
+    duration: number;
+    filePath: string;
+    dateRecorded: string | Date;
+}
+
+const SORT_OPTIONS: Array<{ key: keyof LibraryTrack; label: string }> = [
+    { key: 'dateAdded', label: 'Newest' },
+    { key: 'title', label: 'Title' },
+    { key: 'artist', label: 'Artist' },
+    { key: 'bpm', label: 'BPM' },
+    { key: 'key', label: 'Key' },
+    { key: 'rating', label: 'Rating' },
+];
+
+const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="font-mono text-[8px] font-black uppercase tracking-[0.22em] text-text-data">
+        {children}
+    </div>
+);
+
+const StatChip: React.FC<{
+    label: string;
+    value: React.ReactNode;
+    accent?: 'green' | 'blue' | 'amber' | null;
+}> = ({ label, value, accent = null }) => {
+    const accentClass = accent === 'green'
+        ? 'border-signal-nominal/28 bg-signal-nominal/12 text-signal-nominal'
+        : accent === 'blue'
+            ? 'border-signal-sync/28 bg-signal-sync/12 text-signal-sync'
+            : accent === 'amber'
+                ? 'border-amber-400/28 bg-amber-400/12 text-amber-300'
+                : 'border-white/8 bg-black/30 text-text-primary';
 
     return (
-        <div className="flex gap-[1px]" onMouseLeave={() => setHoverRating(null)}>
-            {[1, 2, 3, 4, 5].map(star => (
-                <button
-                    key={star}
-                    onClick={(e) => { e.stopPropagation(); onChange(star); }}
-                    onMouseEnter={() => setHoverRating(star)}
-                    className="text-[10px] w-3 h-3 flex items-center justify-center transition-all duration-150"
-                >
-                    <span
-                        className={`transform transition-all duration-150 ${(hoverRating !== null ? star <= hoverRating : star <= rating)
-                            ? 'text-white scale-110 drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]'
-                            : 'text-text-data/30 scale-100'
-                            }`}
-                    >
-                        ★
-                    </span>
-                </button>
-            ))}
+        <div className={`rounded-btn-sm border px-3 py-2 ${accentClass}`}>
+            <div className="font-mono text-[7px] font-black uppercase tracking-[0.2em] text-text-data">
+                {label}
+            </div>
+            <div className="mt-1 font-mono text-[11px] font-bold tracking-[0.14em]">
+                {value}
+            </div>
         </div>
     );
 };
 
-export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = "" }) => {
-    // Access global state directly to get real tracks/playlists
+const StarButton: React.FC<{
+    active: boolean;
+    onClick: () => void;
+}> = ({ active, onClick }) => (
+    <button
+        onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+        }}
+        className="flex h-4 w-4 items-center justify-center"
+    >
+        <svg
+            viewBox="0 0 20 20"
+            className={`h-3.5 w-3.5 transition-all ${active ? 'fill-white text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.45)]' : 'fill-transparent text-white/18 stroke-current'}`}
+            strokeWidth="1.2"
+        >
+            <path d="M10 2.4l2.17 4.4 4.86.71-3.51 3.42.83 4.83L10 13.5l-4.35 2.3.83-4.83L2.97 7.51l4.86-.71L10 2.4z" />
+        </svg>
+    </button>
+);
+
+const StarRating: React.FC<{
+    rating: number;
+    onChange: (rating: number) => void;
+}> = ({ rating, onChange }) => {
+    const [hoverRating, setHoverRating] = useState<number | null>(null);
+
+    return (
+        <div
+            className="flex items-center gap-[2px]"
+            onMouseLeave={() => setHoverRating(null)}
+        >
+            {[1, 2, 3, 4, 5].map((star) => {
+                const isActive = hoverRating !== null ? star <= hoverRating : star <= rating;
+                return (
+                    <div
+                        key={star}
+                        onMouseEnter={() => setHoverRating(star)}
+                    >
+                        <StarButton active={isActive} onClick={() => onChange(star)} />
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+function formatTime(seconds: number) {
+    if (!seconds || !Number.isFinite(seconds)) {
+        return '--:--';
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    const remainder = Math.floor(seconds % 60);
+    return `${minutes}:${remainder.toString().padStart(2, '0')}`;
+}
+
+function formatDateValue(value: string | Date | null | undefined) {
+    if (!value) {
+        return 'Unknown';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return date.toLocaleDateString();
+}
+
+function generateGradient(id: string) {
+    const hash = id.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+    const hueA = hash % 360;
+    const hueB = (hash + 120) % 360;
+    return `linear-gradient(135deg, hsl(${hueA}, 54%, 22%), hsl(${hueB}, 54%, 18%))`;
+}
+
+function getRecordingSource(filePath: string) {
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        return filePath;
+    }
+
+    return `${SERVER_BASE}${filePath.startsWith('/') ? filePath : `/${filePath}`}`;
+}
+
+export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = '' }) => {
     const { state } = useDjState();
     const tracks = state.library.tracks;
     const playlists = state.library.playlists;
@@ -48,200 +153,90 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
     const [sortKey, setSortKey] = useState<keyof LibraryTrack>('dateAdded');
     const [sortAsc, setSortAsc] = useState(false);
     const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
-
-    const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
-    const realFileInputRef = useRef<HTMLInputElement>(null);
-
-    // --- SELECTION STATE ---
+    const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+    const [newPlaylistName, setNewPlaylistName] = useState('');
+    const [dragOverPlaylistId, setDragOverPlaylistId] = useState<string | null>(null);
+    const [showPlaylistPicker, setShowPlaylistPicker] = useState<{ trackId: string; x: number; y: number } | null>(null);
+    const [showRecordings, setShowRecordings] = useState(false);
+    const [recordings, setRecordings] = useState<RecordingItem[]>([]);
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
     const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
 
-    // --- PLAYLIST STATE ---
-    const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
-    const [newPlaylistName, setNewPlaylistName] = useState("");
-    const [dragOverPlaylistId, setDragOverPlaylistId] = useState<string | null>(null);
-    const [showPlaylistPicker, setShowPlaylistPicker] = useState<{ trackId: string; x: number; y: number } | null>(null);
-
-    // --- RECORDINGS STATE ---
-    const [showRecordings, setShowRecordings] = useState(false);
-    const [recordings, setRecordings] = useState<any[]>([]);
+    const realFileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (showRecordings) {
-            fetch(`${API_BASE}/recordings`)
-                .then(res => res.json())
-                .then(data => setRecordings(data));
-        }
-    }, [showRecordings]);
-
-    // --- ACTIONS ---
-
-    const handleSort = (key: keyof LibraryTrack) => {
-        if (sortKey === key) {
-            setSortAsc(!sortAsc);
-        } else {
-            setSortKey(key);
-            setSortAsc(true);
-        }
-    };
-
-    const handleCreatePlaylist = () => {
-        if (newPlaylistName.trim()) {
-            dispatch({ type: 'LIBRARY_CREATE_PLAYLIST', name: newPlaylistName.trim() });
-            setNewPlaylistName("");
-            setIsCreatingPlaylist(false);
-        }
-    };
-
-    const handleCancelCreate = () => {
-        setNewPlaylistName("");
-        setIsCreatingPlaylist(false);
-    }
-
-    const handleTrackClick = (e: React.MouseEvent, trackId: string) => {
-        e.stopPropagation(); // Prevent drag interference if any
-
-        const newSelected = new Set(selectedTrackIds);
-
-        if (e.ctrlKey || e.metaKey) {
-            // Toggle
-            if (newSelected.has(trackId)) newSelected.delete(trackId);
-            else newSelected.add(trackId);
-            setLastSelectedId(trackId);
-        } else if (e.shiftKey && lastSelectedId) {
-            // Range Select
-            const allIds = filteredTracks.map(t => t.id);
-            const start = allIds.indexOf(lastSelectedId);
-            const end = allIds.indexOf(trackId);
-            const low = Math.min(start, end);
-            const high = Math.max(start, end);
-            for (let i = low; i <= high; i++) {
-                newSelected.add(allIds[i]);
-            }
-        } else {
-            // Single Select
-            newSelected.clear();
-            newSelected.add(trackId);
-            setLastSelectedId(trackId);
-
-            // Also toggle expand if simple click
-            setExpandedTrackId(expandedTrackId === trackId ? null : trackId);
-        }
-
-        setSelectedTrackIds(newSelected);
-    };
-
-    const handleAddToPlaylist = (e: React.MouseEvent, trackId: string) => {
-        e.stopPropagation();
-        if (playlists.length === 0) {
-            return; // No playlists — button hidden when none exist
-        }
-        if (playlists.length === 1) {
-            // Auto-add to the only playlist
-            dispatch({ type: 'LIBRARY_ADD_TO_PLAYLIST', playlistId: playlists[0].id, trackId });
+        if (!showRecordings) {
             return;
         }
-        // Show inline picker
-        const rect = (e.target as HTMLElement).getBoundingClientRect();
-        setShowPlaylistPicker({ trackId, x: rect.left, y: rect.bottom + 4 });
-    };
 
-    // --- DRAG & DROP LOGIC ---
+        let active = true;
 
-    const handleDragStart = (e: React.DragEvent, trackId: string) => {
-        let idsToSend = [trackId];
-        if (selectedTrackIds.has(trackId)) {
-            idsToSend = Array.from(selectedTrackIds);
-        }
-
-        // Find full track data for the primary dragged track (for deck loading)
-        const primaryTrack = tracks.find(t => t.id === trackId);
-
-        e.dataTransfer.setData('application/json', JSON.stringify({
-            trackIds: idsToSend,
-            track: primaryTrack || null  // Full track object for deck drops
-        }));
-        e.dataTransfer.effectAllowed = 'copy';
-
-        // Visual flair
-        const ghost = document.createElement('div');
-        ghost.textContent = `${idsToSend.length} Track${idsToSend.length > 1 ? 's' : ''}`;
-        ghost.style.background = 'var(--color-signal-nominal)';
-        ghost.style.padding = '4px 8px';
-        ghost.style.borderRadius = '4px';
-        ghost.style.position = 'absolute';
-        ghost.style.top = '-1000px';
-        document.body.appendChild(ghost);
-        e.dataTransfer.setDragImage(ghost, 0, 0);
-        setTimeout(() => document.body.removeChild(ghost), 0);
-    };
-
-    const handlePlaylistDrop = (e: React.DragEvent, playlistId: string) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOverPlaylistId(null);
-        const data = e.dataTransfer.getData('application/json');
-        if (data) {
+        const loadRecordings = async () => {
             try {
-                const payload = JSON.parse(data);
-                if (payload.trackIds && Array.isArray(payload.trackIds)) {
-                    dispatch({ type: 'LIBRARY_ADD_TRACKS_TO_PLAYLIST', playlistId, trackIds: payload.trackIds });
+                const nextRecordings = window.gooddj?.library?.getRecordings
+                    ? await window.gooddj.library.getRecordings()
+                    : await fetch(`${API_BASE}/recordings`).then((response) => response.json());
+
+                if (active) {
+                    setRecordings(nextRecordings as RecordingItem[]);
                 }
-            } catch (err) { console.error(err); }
-        }
-    };
+            } catch (error) {
+                console.error('[LibraryView] Failed to load recordings:', error);
+                if (active) {
+                    setRecordings([]);
+                }
+            }
+        };
 
-    const handleImportFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            dispatch({ type: 'LIBRARY_IMPORT', files: Array.from(e.target.files) });
-        }
-        if (e.target) e.target.value = '';
-    };
+        void loadRecordings();
 
-    // --- FILTER & SORT ---
+        return () => {
+            active = false;
+        };
+    }, [showRecordings]);
 
     const filteredTracks = useMemo(() => {
-        let result = tracks;
+        let nextTracks = tracks;
 
-        // 1. Filter by Playlist
         if (activePlaylistId) {
-            const pl = playlists.find(p => p.id === activePlaylistId);
-            if (pl) {
-                result = result.filter(t => pl.trackIds.includes(t.id));
+            const playlist = playlists.find((item) => item.id === activePlaylistId);
+            if (playlist) {
+                nextTracks = nextTracks.filter((track) => playlist.trackIds.includes(track.id));
             }
         }
 
-        // 2. Search
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter(t =>
-                t.title.toLowerCase().includes(q) ||
-                t.artist.toLowerCase().includes(q) ||
-                t.album.toLowerCase().includes(q)
-            );
+        if (searchQuery.trim()) {
+            const query = searchQuery.trim().toLowerCase();
+            nextTracks = nextTracks.filter((track) => (
+                track.title.toLowerCase().includes(query)
+                || track.artist.toLowerCase().includes(query)
+                || track.album.toLowerCase().includes(query)
+                || track.genre.toLowerCase().includes(query)
+                || track.key.toLowerCase().includes(query)
+            ));
         }
 
-        // 3. Sort
-        return [...result].sort((a, b) => {
-            const valA = a[sortKey];
-            const valB = b[sortKey];
+        return [...nextTracks].sort((trackA, trackB) => {
+            const valueA = trackA[sortKey];
+            const valueB = trackB[sortKey];
 
-            if (valA === undefined) return 1;
-            if (valB === undefined) return -1;
-
-            if (valA < valB) return sortAsc ? -1 : 1;
-            if (valA > valB) return sortAsc ? 1 : -1;
+            if (valueA === undefined) return 1;
+            if (valueB === undefined) return -1;
+            if (valueA < valueB) return sortAsc ? -1 : 1;
+            if (valueA > valueB) return sortAsc ? 1 : -1;
             return 0;
         });
-    }, [tracks, playlists, searchQuery, activePlaylistId, sortKey, sortAsc]);
+    }, [activePlaylistId, playlists, searchQuery, sortAsc, sortKey, tracks]);
 
-    // --- HARMONIC MIXING ---
     const effectiveActiveKey = useMemo(() => {
-        const activeDeckId = state.activeDeckId || (state.decks.A.isPlaying ? 'A' : (state.decks.B.isPlaying ? 'B' : 'A'));
+        const activeDeckId = state.activeDeckId
+            || (state.decks.A.isPlaying ? 'A' : state.decks.B.isPlaying ? 'B' : 'A');
         const activeDeck = state.decks[activeDeckId as 'A' | 'B'];
         const activeBaseKey = activeDeck.track?.key;
 
-        if (!activeBaseKey || activeBaseKey === '?') return null;
+        if (!activeBaseKey || activeBaseKey === '?') {
+            return null;
+        }
 
         let totalShift = activeDeck.keyShift;
         if (!activeDeck.keyLock) {
@@ -251,424 +246,743 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
         }
 
         return shiftCamelotKey(activeBaseKey, totalShift);
-    }, [state.activeDeckId, state.decks.A.isPlaying, state.decks.B.isPlaying, state.decks.A.track?.key, state.decks.B.track?.key, state.decks.A.keyShift, state.decks.B.keyShift, state.decks.A.keyLock, state.decks.B.keyLock, state.decks.A.pitch, state.decks.B.pitch]);
+    }, [
+        state.activeDeckId,
+        state.decks.A.isPlaying,
+        state.decks.B.isPlaying,
+        state.decks.A.track?.key,
+        state.decks.B.track?.key,
+        state.decks.A.keyShift,
+        state.decks.B.keyShift,
+        state.decks.A.keyLock,
+        state.decks.B.keyLock,
+        state.decks.A.pitch,
+        state.decks.B.pitch,
+    ]);
 
-    // --- HELPER ---
-    const formatTime = (sec: number) => {
-        if (!sec) return "-:-";
-        const m = Math.floor(sec / 60);
-        const s = Math.floor(sec % 60);
-        return `${m}:${s.toString().padStart(2, '0')}`;
+    const focusedTrack = useMemo(() => {
+        if (selectedTrackIds.size === 0) {
+            return null;
+        }
+
+        if (lastSelectedId) {
+            return tracks.find((track) => track.id === lastSelectedId) ?? null;
+        }
+
+        const [firstSelectedId] = Array.from(selectedTrackIds);
+        return tracks.find((track) => track.id === firstSelectedId) ?? null;
+    }, [lastSelectedId, selectedTrackIds, tracks]);
+
+    const activePlaylist = activePlaylistId
+        ? playlists.find((playlist) => playlist.id === activePlaylistId) ?? null
+        : null;
+
+    const sourceLabel = showRecordings
+        ? 'Recordings'
+        : activePlaylist
+            ? activePlaylist.name
+            : 'All Tracks';
+
+    const handleSortChange = (nextSortKey: keyof LibraryTrack) => {
+        if (sortKey === nextSortKey) {
+            setSortAsc((current) => !current);
+            return;
+        }
+
+        setSortKey(nextSortKey);
+        setSortAsc(nextSortKey !== 'dateAdded');
     };
 
-    const generateGradient = (id: string) => {
-        const hash = id.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0);
-        const hue1 = hash % 360;
-        const hue2 = (hash + 180) % 360;
-        return `linear-gradient(135deg, hsl(${hue1}, 60%, 20%), hsl(${hue2}, 60%, 20%))`;
+    const handleTrackClick = (event: React.MouseEvent, trackId: string) => {
+        event.stopPropagation();
+
+        const nextSelection = new Set(selectedTrackIds);
+
+        if (event.ctrlKey || event.metaKey) {
+            if (nextSelection.has(trackId)) {
+                nextSelection.delete(trackId);
+            } else {
+                nextSelection.add(trackId);
+            }
+            setLastSelectedId(trackId);
+        } else if (event.shiftKey && lastSelectedId) {
+            const visibleIds = filteredTracks.map((track) => track.id);
+            const fromIndex = visibleIds.indexOf(lastSelectedId);
+            const toIndex = visibleIds.indexOf(trackId);
+            const start = Math.min(fromIndex, toIndex);
+            const end = Math.max(fromIndex, toIndex);
+
+            for (let index = start; index <= end; index += 1) {
+                nextSelection.add(visibleIds[index]);
+            }
+
+            setLastSelectedId(trackId);
+        } else {
+            nextSelection.clear();
+            nextSelection.add(trackId);
+            setLastSelectedId(trackId);
+        }
+
+        setSelectedTrackIds(nextSelection);
+    };
+
+    const handleCreatePlaylist = () => {
+        const trimmed = newPlaylistName.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        dispatch({ type: 'LIBRARY_CREATE_PLAYLIST', name: trimmed });
+        setNewPlaylistName('');
+        setIsCreatingPlaylist(false);
+    };
+
+    const handleDragStart = (event: React.DragEvent, trackId: string) => {
+        const trackIds = selectedTrackIds.has(trackId)
+            ? Array.from(selectedTrackIds)
+            : [trackId];
+        const primaryTrack = tracks.find((track) => track.id === trackId) ?? null;
+
+        event.dataTransfer.setData('application/json', JSON.stringify({
+            trackIds,
+            track: primaryTrack,
+        }));
+        event.dataTransfer.effectAllowed = 'copy';
+    };
+
+    const handlePlaylistDrop = (event: React.DragEvent, playlistId: string) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOverPlaylistId(null);
+
+        const payload = event.dataTransfer.getData('application/json');
+        if (!payload) {
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(payload);
+            if (Array.isArray(parsed.trackIds)) {
+                dispatch({
+                    type: 'LIBRARY_ADD_TRACKS_TO_PLAYLIST',
+                    playlistId,
+                    trackIds: parsed.trackIds,
+                });
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleAddToPlaylist = (event: React.MouseEvent, trackId: string) => {
+        event.stopPropagation();
+
+        if (playlists.length === 0) {
+            return;
+        }
+
+        if (playlists.length === 1) {
+            dispatch({
+                type: 'LIBRARY_ADD_TO_PLAYLIST',
+                playlistId: playlists[0].id,
+                trackId,
+            });
+            return;
+        }
+
+        const target = event.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        setShowPlaylistPicker({
+            trackId,
+            x: rect.left,
+            y: rect.bottom + 4,
+        });
+    };
+
+    const handleImportFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files.length > 0) {
+            dispatch({
+                type: 'LIBRARY_IMPORT',
+                files: Array.from(event.target.files),
+            });
+        }
+
+        if (event.target) {
+            event.target.value = '';
+        }
     };
 
     return (
-        <div className={`flex flex-1 bg-canvas overflow-hidden font-mono text-sm ${className}`} onClick={() => { setSelectedTrackIds(new Set()); setShowPlaylistPicker(null); }}>
+        <div
+            className={`flex min-h-0 flex-1 overflow-hidden bg-transparent ${className}`}
+            onClick={() => {
+                setSelectedTrackIds(new Set());
+                setLastSelectedId(null);
+                setShowPlaylistPicker(null);
+            }}
+        >
+            <input
+                ref={realFileInputRef}
+                type="file"
+                onChange={handleImportFiles}
+                multiple
+                className="hidden"
+                accept="audio/*"
+            />
 
-            <input type="file" ref={realFileInputRef} onChange={handleImportFiles} multiple className="hidden" accept="audio/*" />
-
-            {/* 1. INDUSTRIAL SIDEBAR (Matte Black) */}
-            <div className="w-52 border-r border-white/5 flex flex-col bg-black/60 select-none backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
-                <div className="p-3 border-b border-white/5 bg-black/40">
-                    <h3 className="text-[7px] font-mono font-black text-white/20 uppercase tracking-[0.4em]">Collection Unit</h3>
+            <aside
+                className="surface-panel mr-2 flex w-[220px] shrink-0 flex-col overflow-hidden rounded-panel"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="border-b border-white/6 px-4 py-4">
+                    <SectionLabel>Collection</SectionLabel>
+                    <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
+                        {sourceLabel}
+                    </div>
                 </div>
-                
-                <nav className="flex flex-col py-4 gap-1">
+
+                <div className="space-y-1 p-3">
                     <button
-                        onClick={() => { setActivePlaylistId(null); setShowRecordings(false); }}
-                        className={`text-left px-4 py-2 text-[10px] font-mono font-black uppercase tracking-widest transition-all relative overflow-hidden group
-                            ${activePlaylistId === null && !showRecordings ? 'text-signal-sync bg-signal-sync/5' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                        onClick={() => {
+                            setActivePlaylistId(null);
+                            setShowRecordings(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-btn-sm border px-3 py-2 text-left font-mono text-[9px] font-black uppercase tracking-[0.18em] transition-all ${
+                            !activePlaylistId && !showRecordings
+                                ? 'border-signal-sync/30 bg-signal-sync/14 text-signal-sync'
+                                : 'border-white/8 bg-black/30 text-text-secondary hover:border-white/14 hover:text-text-primary'
+                        }`}
                     >
-                        {activePlaylistId === null && !showRecordings && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-signal-sync shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-                        All Tracks
+                        <span>All Tracks</span>
+                        <span>{tracks.length}</span>
                     </button>
                     <button
-                        onClick={() => { setActivePlaylistId(null); setShowRecordings(true); }}
-                        className={`text-left px-4 py-2 text-[10px] font-mono font-black uppercase tracking-widest transition-all relative overflow-hidden group
-                            ${showRecordings ? 'text-signal-sync bg-signal-sync/5' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}`}
+                        onClick={() => {
+                            setActivePlaylistId(null);
+                            setShowRecordings(true);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-btn-sm border px-3 py-2 text-left font-mono text-[9px] font-black uppercase tracking-[0.18em] transition-all ${
+                            showRecordings
+                                ? 'border-signal-sync/30 bg-signal-sync/14 text-signal-sync'
+                                : 'border-white/8 bg-black/30 text-text-secondary hover:border-white/14 hover:text-text-primary'
+                        }`}
                     >
-                        {showRecordings && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-signal-sync shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-                        Recordings
+                        <span>Recordings</span>
+                        <span>{recordings.length}</span>
                     </button>
-                    
-                    <div className="mt-4 px-4 py-2 mb-2">
-                        <div className="h-[1px] bg-white/5 w-full" />
-                    </div>
+                </div>
 
-                    <div className="px-4 flex items-center justify-between mb-2">
-                        <h3 className="text-[7px] font-mono font-black text-white/20 uppercase tracking-[0.4em]">Playlists</h3>
-                        <button
-                            onClick={() => setIsCreatingPlaylist(true)}
-                            className="w-4 h-4 rounded-xs border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:border-white/30 transition-all text-xs active:scale-90"
-                        >
-                            +
-                        </button>
-                    </div>
+                <div className="flex items-center justify-between px-4 pb-2 pt-3">
+                    <SectionLabel>Playlists</SectionLabel>
+                    <button
+                        onClick={() => setIsCreatingPlaylist(true)}
+                        className="flex h-5 w-5 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[10px] font-black text-text-secondary transition-all hover:border-white/18 hover:text-text-primary"
+                    >
+                        +
+                    </button>
+                </div>
 
-                    {isCreatingPlaylist && (
-                        <div className="px-3 mb-2 animate-in slide-in-from-top-1 duration-200">
-                            <input
-                                autoFocus
-                                type="text"
-                                className="w-full bg-black border border-signal-sync/30 rounded-xs text-[9px] font-mono text-white px-2 py-1 outline-none shadow-[0_0_10px_rgba(59,130,246,0.1)]"
-                                value={newPlaylistName}
-                                onChange={(e) => setNewPlaylistName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleCreatePlaylist();
-                                    if (e.key === 'Escape') handleCancelCreate();
-                                }}
-                                onBlur={handleCancelCreate}
-                                placeholder="NEW_PLAYLIST_ID..."
-                            />
+                {isCreatingPlaylist ? (
+                    <div className="px-4 pb-3">
+                        <input
+                            autoFocus
+                            value={newPlaylistName}
+                            onChange={(event) => setNewPlaylistName(event.target.value)}
+                            onBlur={() => {
+                                setIsCreatingPlaylist(false);
+                                setNewPlaylistName('');
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    handleCreatePlaylist();
+                                } else if (event.key === 'Escape') {
+                                    setIsCreatingPlaylist(false);
+                                    setNewPlaylistName('');
+                                }
+                            }}
+                            placeholder="Playlist name"
+                            className="w-full rounded-btn-sm border border-signal-sync/24 bg-black/45 px-3 py-2 font-mono text-[10px] text-text-primary outline-none transition-all focus:border-signal-sync/40"
+                        />
+                    </div>
+                ) : null}
+
+                <div className="custom-scrollbar flex-1 overflow-y-auto px-2 pb-3">
+                    {playlists.length === 0 ? (
+                        <div className="px-3 py-4 font-mono text-[8px] uppercase tracking-[0.18em] text-text-secondary">
+                            No playlists yet
                         </div>
-                    )}
-
-                    <div className="flex-1 overflow-y-auto px-1 custom-scrollbar">
-                        {playlists.map(p => (
+                    ) : (
+                        playlists.map((playlist) => (
                             <div
-                                key={p.id}
-                                onDragOver={(e) => { e.preventDefault(); setDragOverPlaylistId(p.id); }}
+                                key={playlist.id}
+                                onDragOver={(event) => {
+                                    event.preventDefault();
+                                    setDragOverPlaylistId(playlist.id);
+                                }}
                                 onDragLeave={() => setDragOverPlaylistId(null)}
-                                onDrop={(e) => handlePlaylistDrop(e, p.id)}
-                                className="relative group mb-[1px]"
+                                onDrop={(event) => handlePlaylistDrop(event, playlist.id)}
+                                className="group mb-1"
                             >
                                 <button
-                                    onClick={() => { setActivePlaylistId(p.id); setShowRecordings(false); }}
-                                    className={`w-full text-left px-3 py-2 text-[9px] font-mono font-bold transition-all truncate flex justify-between items-center rounded-xs
-                                        ${activePlaylistId === p.id ? 'text-white bg-white/10' : 'text-white/30 hover:text-white/60 hover:bg-white/5'}
-                                        ${dragOverPlaylistId === p.id ? 'bg-signal-sync/20 text-signal-sync border border-signal-sync/40' : 'border border-transparent'}
-                                    `}
+                                    onClick={() => {
+                                        setActivePlaylistId(playlist.id);
+                                        setShowRecordings(false);
+                                    }}
+                                    className={`flex w-full items-center justify-between rounded-btn-sm border px-3 py-2 text-left font-mono text-[9px] font-black uppercase tracking-[0.16em] transition-all ${
+                                        activePlaylistId === playlist.id
+                                            ? 'border-signal-nominal/28 bg-signal-nominal/12 text-signal-nominal'
+                                            : dragOverPlaylistId === playlist.id
+                                                ? 'border-signal-sync/28 bg-signal-sync/12 text-signal-sync'
+                                                : 'border-transparent bg-black/20 text-text-secondary hover:border-white/10 hover:bg-black/35 hover:text-text-primary'
+                                    }`}
                                 >
-                                    <span className="truncate flex-1 tracking-wider">{p.name.toUpperCase()}</span>
-                                    <span className="text-[7px] opacity-40 font-black min-w-[16px] text-right">{p.trackIds.length}</span>
+                                    <span className="truncate">{playlist.name}</span>
+                                    <span>{playlist.trackIds.length}</span>
                                 </button>
-                                
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); dispatch({ type: 'LIBRARY_DELETE_PLAYLIST', playlistId: p.id }); }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-signal-clipping opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black/80 rounded-xs border border-white/5"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        dispatch({ type: 'LIBRARY_DELETE_PLAYLIST', playlistId: playlist.id });
+                                    }}
+                                    className="mt-1 hidden w-full rounded-btn-sm border border-white/8 bg-black/25 px-3 py-1 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:border-signal-clipping/24 hover:text-signal-clipping group-hover:block"
                                 >
-                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                    Delete
                                 </button>
                             </div>
-                        ))}
+                        ))
+                    )}
+                </div>
+
+                <div className="border-t border-white/6 p-3">
+                    <button
+                        onClick={() => realFileInputRef.current?.click()}
+                        className="w-full rounded-btn-sm border border-white/10 bg-black/35 px-3 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-text-primary transition-all hover:border-white/18 hover:bg-white/[0.03]"
+                    >
+                        Import Audio
+                    </button>
+                </div>
+            </aside>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div
+                    className="surface-panel flex items-center gap-3 rounded-panel px-4 py-3"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="min-w-[180px]">
+                        <SectionLabel>Library</SectionLabel>
+                        <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
+                            {sourceLabel}
+                        </div>
                     </div>
 
-                    <button onClick={() => realFileInputRef.current?.click()} className="mt-auto mx-4 mb-6 py-2 border border-white/10 rounded-xs text-[8px] font-mono font-black uppercase tracking-[0.2em] text-white/20 hover:text-white hover:border-white/30 transition-all flex items-center justify-center gap-2 bg-white/5">
-                        <span className="opacity-40 tracking-[0.4em]">Import_Native</span>
-                    </button>
-                </nav>
-            </div>
+                    <div className="min-w-0 flex-1">
+                        <input
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="Search title, artist, album, genre, key"
+                            className="w-full rounded-btn-sm border border-white/10 bg-black/35 px-3 py-2 font-mono text-[10px] text-text-primary outline-none transition-all placeholder:text-text-secondary focus:border-signal-sync/30"
+                        />
+                    </div>
 
-            {/* 2. MAIN CONTENT AREA */}
-            <div className="flex-1 flex flex-col bg-transparent">
+                    <select
+                        value={sortKey}
+                        onChange={(event) => handleSortChange(event.target.value as keyof LibraryTrack)}
+                        className="rounded-btn-sm border border-white/10 bg-black/35 px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.16em] text-text-primary outline-none"
+                    >
+                        {SORT_OPTIONS.map((option) => (
+                            <option key={option.key} value={option.key}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+
+                    <button
+                        onClick={() => setSortAsc((current) => !current)}
+                        className="rounded-btn-sm border border-white/10 bg-black/35 px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.16em] text-text-primary transition-all hover:border-white/18"
+                    >
+                        {sortAsc ? 'Asc' : 'Desc'}
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                        <StatChip label="Tracks" value={filteredTracks.length} />
+                        <StatChip label="Selected" value={selectedTrackIds.size} accent={selectedTrackIds.size > 0 ? 'blue' : null} />
+                        {effectiveActiveKey ? <StatChip label="Active Key" value={effectiveActiveKey} accent="green" /> : null}
+                    </div>
+                </div>
 
                 {showRecordings ? (
-                    <div className="flex-1 flex flex-col p-8 overflow-y-auto">
-                        <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
-                            <h2 className="text-xl font-mono font-black text-white tracking-[0.2em] uppercase">Archive_Unit recordings</h2>
-                            <div className="flex gap-2 text-[10px] font-mono">
-                                <span className="text-white/20 uppercase tracking-widest">Storage: Online</span>
-                                <div className="w-1.5 h-1.5 rounded-full bg-signal-nominal animate-pulse" />
+                    <div
+                        className="surface-panel custom-scrollbar flex-1 overflow-y-auto rounded-panel p-4"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="mb-4 flex items-center justify-between">
+                            <div>
+                                <SectionLabel>Recordings</SectionLabel>
+                                <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
+                                    Recorded mixes
+                                </div>
+                            </div>
+                            <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-text-secondary">
+                                {recordings.length} files
                             </div>
                         </div>
-                        <div className="flex flex-col gap-2">
-                            {recordings.map(rec => (
-                                <div key={rec.id} className="flex items-center justify-between p-4 bg-black/40 rounded-xs border border-white/10 hover:border-signal-sync/30 transition-all group overflow-hidden relative">
-                                    <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-white/5 group-hover:bg-signal-sync transition-colors" />
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-mono font-bold text-white mb-1 tracking-wider">{rec.title}</span>
-                                        <span className="text-[8px] text-white/30 font-mono tracking-widest uppercase">{new Date(rec.dateRecorded).toLocaleString()}</span>
+
+                        {recordings.length === 0 ? (
+                            <div className="flex h-full min-h-[320px] items-center justify-center rounded-panel border border-dashed border-white/10 bg-black/25">
+                                <div className="text-center">
+                                    <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                                        No recordings yet
                                     </div>
-                                    <div className="flex items-center gap-6">
-                                        <audio controls src={`${SERVER_BASE}${rec.filePath}`} className="hidden" id={`audio-${rec.id}`} />
-                                        <div className="flex gap-2">
-                                            <a href={`${SERVER_BASE}${rec.filePath}`} download className="px-3 py-1 bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 rounded-xs text-[9px] font-mono font-black uppercase tracking-wider transition-all">Export</a>
-                                            <button
-                                                onClick={() => {
-                                                    if (confirm('Permanently delete record?')) {
-                                                        fetch(`${API_BASE}/recordings/${rec.id}`, { method: 'DELETE' }).then(() => setRecordings(recordings.filter(r => r.id !== rec.id)));
-                                                    }
-                                                }}
-                                                className="px-3 py-1 bg-signal-clipping/10 hover:bg-signal-clipping/30 text-signal-clipping border border-signal-clipping/20 rounded-xs text-[9px] font-mono font-black uppercase tracking-wider transition-all"
-                                            >
-                                                Purge
-                                            </button>
-                                        </div>
+                                    <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                        Start a recording from the transport bar to build your archive.
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                {recordings.map((recording) => (
+                                    <div
+                                        key={recording.id}
+                                        className="rounded-panel border border-white/8 bg-black/30 p-4"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div className="font-sans text-[16px] font-bold tracking-tight text-text-primary">
+                                                    {recording.title}
+                                                </div>
+                                                <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.18em] text-text-secondary">
+                                                    {formatDateValue(recording.dateRecorded)}
+                                                </div>
+                                            </div>
+                                            <StatChip label="Length" value={formatTime(recording.duration)} />
+                                        </div>
+                                        <audio
+                                            controls
+                                            className="mt-4 w-full"
+                                            src={getRecordingSource(recording.filePath)}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ) : (
-                    <>
-                        {/* High-Density Header Bar */}
-                        <div className="h-10 border-b border-white/10 flex items-center justify-between px-4 bg-black/40 gap-4 shrink-0 relative overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                            <div className="absolute top-0 left-0 w-full h-[1px] bg-white/5" />
-                            <div className="relative flex-1 max-w-lg">
-                                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none opacity-20">
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="COLLECTION_QUERY..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xs py-1.5 pl-8 pr-4 text-[10px] font-mono text-white/80 focus:outline-none focus:border-signal-sync/50 focus:bg-black/60 transition-all placeholder:text-white/10 tracking-widest"
-                                />
+                    <div className="flex min-h-0 flex-1 gap-2">
+                        <div
+                            className={`surface-panel flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel ${
+                                dragOverPlaylistId === 'library-root'
+                                    ? 'border-signal-sync/30 bg-signal-sync/8'
+                                    : ''
+                            }`}
+                            onClick={(event) => event.stopPropagation()}
+                            onDragOver={(event) => {
+                                if (event.dataTransfer.types.includes('Files')) {
+                                    event.preventDefault();
+                                    setDragOverPlaylistId('library-root');
+                                }
+                            }}
+                            onDragLeave={() => setDragOverPlaylistId(null)}
+                            onDrop={(event) => {
+                                if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setDragOverPlaylistId(null);
+                                    dispatch({ type: 'LIBRARY_IMPORT', files: Array.from(event.dataTransfer.files) });
+                                }
+                            }}
+                        >
+                            <div className="grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/6 px-4 py-3">
+                                <SectionLabel>+</SectionLabel>
+                                <SectionLabel>Track</SectionLabel>
+                                <SectionLabel>Artist</SectionLabel>
+                                <SectionLabel>BPM</SectionLabel>
+                                <SectionLabel>Key</SectionLabel>
+                                <SectionLabel>Rating</SectionLabel>
+                                <SectionLabel>Time</SectionLabel>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                {selectedTrackIds.size > 0 && (
-                                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300">
-                                        <div className="px-2 py-0.5 bg-signal-sync/20 text-signal-sync text-[8px] font-mono font-black rounded-xs border border-signal-sync/40">
-                                            {selectedTrackIds.size} SEGS SELECTED
+                            <div className="custom-scrollbar flex-1 overflow-y-auto">
+                                {filteredTracks.length === 0 ? (
+                                    <div className="flex h-full min-h-[320px] items-center justify-center px-8">
+                                        <div className="text-center">
+                                            <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                                                No tracks match this view
+                                            </div>
+                                            <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                                Clear the filters or import fresh audio to continue building the collection.
+                                            </div>
                                         </div>
-                                        <div className="h-4 w-[1px] bg-white/10" />
                                     </div>
-                                )}
-                                <div className="flex gap-1 text-[7px] font-mono font-black text-white/10 uppercase tracking-[0.3em]">
-                                    <span>V-System</span>
-                                    <span>[0.12.8]</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* High-Density Grid Header */}
-                        <div className="grid grid-cols-12 gap-0 px-4 py-2 border-b border-white/10 bg-black/60 text-[8px] font-mono font-black text-white/30 uppercase tracking-[0.4em] sticky top-0 z-10 select-none shadow-lg">
-                            <div className="col-span-1 text-center opacity-40">+</div>
-                            <div onClick={() => handleSort('title')} className="col-span-4 cursor-pointer hover:text-white transition-colors">Track_Descriptor</div>
-                            <div onClick={() => handleSort('artist')} className="col-span-3 cursor-pointer hover:text-white transition-colors pl-2">Source_Unit</div>
-                            <div onClick={() => handleSort('bpm')} className="col-span-1 text-right cursor-pointer hover:text-white transition-colors pr-4">BPM</div>
-                            <div onClick={() => handleSort('key')} className="col-span-1 text-center cursor-pointer hover:text-white transition-colors">Key</div>
-                            <div onClick={() => handleSort('rating')} className="col-span-1 text-center cursor-pointer hover:text-white transition-colors">Rank</div>
-                            <div onClick={() => handleSort('duration')} className="col-span-1 text-right cursor-pointer hover:text-white transition-colors">T-Len</div>
-                        </div>
-
-                            {/* High-Density Grid Body */}
-                            <div
-                                className={`flex-1 overflow-y-auto custom-scrollbar relative bg-[#0a0a0a]
-                                    ${dragOverPlaylistId === 'library-root' ? 'bg-signal-sync/5 border-2 border-dashed border-signal-sync/30 m-2' : ''}`}
-                                onClick={() => setSelectedTrackIds(new Set())}
-                                onDragOver={(e) => {
-                                    if (e.dataTransfer.types.includes('Files')) {
-                                        e.preventDefault();
-                                        setDragOverPlaylistId('library-root');
-                                    }
-                                }}
-                                onDragLeave={() => setDragOverPlaylistId(null)}
-                                onDrop={(e) => {
-                                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setDragOverPlaylistId(null);
-                                        dispatch({ type: 'LIBRARY_IMPORT', files: Array.from(e.dataTransfer.files) });
-                                    }
-                                }}
-                            >
-                                <AnimatePresence initial={false}>
-                                    {filteredTracks.map((track, idx) => {
-                                        const isExpanded = expandedTrackId === track.id;
+                                ) : (
+                                    filteredTracks.map((track) => {
                                         const isSelected = selectedTrackIds.has(track.id);
-                                        const isCompatible = effectiveActiveKey && track.key && track.key !== '?' ? isHarmonicMatch(effectiveActiveKey, track.key) : false;
+                                        const isCompatible = Boolean(
+                                            effectiveActiveKey
+                                            && track.key
+                                            && track.key !== '?'
+                                            && isHarmonicMatch(effectiveActiveKey, track.key)
+                                        );
 
                                         return (
-                                            <motion.div 
-                                                layout
-                                                key={track.id} 
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                                            <motion.div
+                                                key={track.id}
+                                                draggable
+                                                whileHover={{ x: 2 }}
+                                                onDragStart={(event) => handleDragStart(event as unknown as React.DragEvent, track.id)}
+                                                onClick={(event) => handleTrackClick(event, track.id)}
+                                                className={`group relative grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/[0.04] px-4 py-3 transition-all ${
+                                                    isSelected
+                                                        ? 'bg-signal-sync/14'
+                                                        : isCompatible
+                                                            ? 'bg-signal-nominal/[0.03] hover:bg-signal-nominal/[0.06]'
+                                                            : 'hover:bg-white/[0.025]'
+                                                }`}
                                             >
-                                                <motion.div
-                                                    draggable={true}
-                                                    onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, track.id)}
-                                                    whileHover={{ x: 2 }}
-                                                    className={`grid grid-cols-12 gap-0 px-4 py-[6px] border-b border-white/[0.03] items-center group transition-all cursor-pointer select-none relative
-                                                        ${isSelected ? 'bg-signal-sync/20 text-white z-10' : (isExpanded ? 'bg-white/[0.04]' : isCompatible ? 'bg-signal-nominal/[0.04] hover:bg-signal-nominal/[0.08]' : 'hover:bg-white/[0.02]')}`}
-                                                    onClick={(e) => handleTrackClick(e, track.id)}
-                                                >
-                                                    {/* Selection Accent */}
-                                                    {isSelected && (
-                                                        <motion.div 
-                                                            layoutId="selection-accent"
-                                                            className="absolute left-0 top-0 bottom-0 w-[2px] bg-signal-sync shadow-[0_0_10px_rgba(59,130,246,0.8)]" 
-                                                        />
-                                                    )}
-                                                    {isCompatible && !isSelected && <div className="absolute left-0 top-1 bottom-1 w-[1.5px] bg-signal-nominal/40" />}
+                                                {isSelected ? (
+                                                    <div className="absolute inset-y-0 left-0 w-[2px] bg-signal-sync shadow-[0_0_10px_rgba(59,130,246,0.7)]" />
+                                                ) : isCompatible ? (
+                                                    <div className="absolute inset-y-1 left-0 w-[2px] bg-signal-nominal/45" />
+                                                ) : null}
 
-                                                    {/* Add to Playlist Button */}
-                                                    <div className="col-span-1 flex justify-center opacity-20 group-hover:opacity-100 transition-opacity">
-                                                        <motion.button
-                                                            whileTap={{ scale: 0.8 }}
-                                                            onClick={(e) => handleAddToPlaylist(e, track.id)}
-                                                            className={`w-3.5 h-3.5 rounded-xs border flex items-center justify-center transition-all text-[8px] font-black
-                                                                ${isSelected ? 'border-white text-white' : 'border-white/10 text-white/40 hover:text-white hover:border-white/30'}`}
-                                                        >
-                                                            +
-                                                        </motion.button>
+                                                <div className="flex items-center justify-center">
+                                                    <button
+                                                        onClick={(event) => handleAddToPlaylist(event, track.id)}
+                                                        className="flex h-5 w-5 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[9px] font-black text-text-secondary opacity-0 transition-all hover:border-white/18 hover:text-text-primary group-hover:opacity-100"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+
+                                                <div className="min-w-0">
+                                                    <div className="truncate font-sans text-[14px] font-semibold tracking-tight text-text-primary">
+                                                        {track.title}
                                                     </div>
-
-                                                    {/* Title */}
-                                                    <div className="col-span-4 flex flex-col justify-center overflow-hidden">
-                                                        <span className={`text-[11px] truncate font-bold tracking-tight ${isSelected ? 'text-white' : 'text-white/80'}`}>{track.title}</span>
+                                                    <div className="mt-1 truncate font-mono text-[8px] uppercase tracking-[0.16em] text-text-secondary">
+                                                        {track.album || 'Unknown album'}
                                                     </div>
+                                                </div>
 
-                                                    {/* Artist */}
-                                                    <div className={`col-span-3 text-[10px] truncate pl-2 font-medium ${isSelected ? 'text-white/70' : 'text-white/40'}`}>{track.artist}</div>
+                                                <div className="truncate font-mono text-[10px] font-medium text-text-secondary">
+                                                    {track.artist}
+                                                </div>
 
-                                                    {/* BPM */}
-                                                    <div className={`col-span-1 text-right text-[10px] font-mono font-black pr-4 ${isCompatible ? 'text-signal-nominal' : (isSelected ? 'text-white' : 'text-white/50')}`}>
-                                                        {track.bpm ? track.bpm.toFixed(1) : '---.-'}
+                                                <div className={`font-mono text-[10px] font-black ${isCompatible ? 'text-signal-nominal' : 'text-text-primary'}`}>
+                                                    {track.bpm ? track.bpm.toFixed(1) : '--.-'}
+                                                </div>
+
+                                                <div className="flex items-center">
+                                                    <div className={`rounded-btn-sm border px-2 py-1 font-mono text-[9px] font-black tracking-[0.12em] ${
+                                                        isCompatible
+                                                            ? 'border-signal-nominal/28 bg-signal-nominal/12 text-signal-nominal'
+                                                            : 'border-white/8 bg-black/30 text-text-primary'
+                                                    }`}>
+                                                        {track.key || '--'}
                                                     </div>
+                                                </div>
 
-                                                    {/* Camelot Key Badge matching flair */}
-                                                    <div className="col-span-1 flex justify-center">
-                                                        <motion.div 
-                                                            whileHover={{ scale: 1.1 }}
-                                                            className={`w-9 py-0.5 rounded-xs text-center text-[9px] font-mono font-black transition-all border
-                                                            ${isCompatible 
-                                                                ? 'bg-signal-nominal text-white border-white/20 shadow-[0_0_12px_rgba(22,197,94,0.4)]' 
-                                                                : (isSelected ? 'bg-white/20 text-white border-white/30' : 'bg-black/40 text-white/30 border-white/5')}
-                                                        `}>
-                                                            {track.key || '??'}
-                                                        </motion.div>
-                                                    </div>
+                                                <div className="flex items-center">
+                                                    <StarRating
+                                                        rating={track.rating || 0}
+                                                        onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: track.id, rating })}
+                                                    />
+                                                </div>
 
-                                                    {/* Star Rating */}
-                                                    <div className="col-span-1 flex justify-center scale-90 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                        <StarRating
-                                                            rating={track.rating || 0}
-                                                            onChange={(r) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: track.id, rating: r })}
-                                                        />
-                                                    </div>
-
-                                                    {/* Duration */}
-                                                    <div className={`col-span-1 text-right text-[10px] font-mono font-bold ${isSelected ? 'text-white/70' : 'text-white/20'}`}>
-                                                        {formatTime(track.duration)}
-                                                    </div>
-                                                </motion.div>
-
-                                                {/* Expandable Technical Card */}
-                                                <AnimatePresence>
-                                                    {isExpanded && (
-                                                        <motion.div 
-                                                            initial={{ height: 0, opacity: 0 }}
-                                                            animate={{ height: "auto", opacity: 1 }}
-                                                            exit={{ height: 0, opacity: 0 }}
-                                                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                                                            className="border-t border-b border-white/5 bg-[#050505] overflow-hidden" 
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <div className="p-5 flex gap-8 relative overflow-hidden">
-                                                                <div className="absolute top-0 right-0 p-4 opacity-5 font-mono text-[6px] tracking-[0.5em] [writing-mode:vertical-lr] uppercase">Extended_Metadata_Record</div>
-                                                                
-                                                                {/* Album Art with Optimized Image */}
-                                                                <div className="w-28 h-28 rounded-xs shadow-2xl border border-white/10 shrink-0 relative overflow-hidden group/art bg-black">
-                                                                    <OptimizedImage
-                                                                        alt={track.album}
-                                                                        fallbackGradient={generateGradient(track.id)}
-                                                                        className="w-full h-full rounded-xs transition-transform duration-500 group-hover/art:scale-110"
-                                                                    />
-                                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover/art:opacity-100 transition-opacity" />
-                                                                </div>
-
-                                                                {/* Extended Metadata Matrix */}
-                                                                <div className="flex flex-col gap-4 flex-1">
-                                                                    <div className="flex justify-between items-start">
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <div className="text-[7px] font-mono font-black text-signal-sync uppercase tracking-[0.3em]">Sector: Physical_Medium</div>
-                                                                            <div className="text-base font-bold text-white tracking-tight">{track.album || 'UNDEFINED_ALBUM_ROOT'}</div>
-                                                                        </div>
-                                                                        <div className="flex gap-2">
-                                                                            <motion.button
-                                                                                whileHover={{ scale: 1.05 }}
-                                                                                whileTap={{ scale: 0.95 }}
-                                                                                onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'A', track })}
-                                                                                className="px-5 py-2 bg-signal-sync text-white rounded-xs text-[10px] font-mono font-black uppercase tracking-widest transition-all hover:brightness-125 shadow-lg"
-                                                                            >
-                                                                                Load_Unit_A
-                                                                            </motion.button>
-                                                                            <motion.button
-                                                                                whileHover={{ scale: 1.05 }}
-                                                                                whileTap={{ scale: 0.95 }}
-                                                                                onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'B', track })}
-                                                                                className="px-5 py-2 bg-signal-sync text-white rounded-xs text-[10px] font-mono font-black uppercase tracking-widest transition-all hover:brightness-125 shadow-lg"
-                                                                            >
-                                                                                Load_Unit_B
-                                                                            </motion.button>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="grid grid-cols-3 gap-6 pt-2 border-t border-white/5">
-                                                                        <div className="flex flex-col">
-                                                                            <div className="text-[7px] font-mono font-black text-white/20 uppercase tracking-[0.3em] mb-1">Tag_Identifier</div>
-                                                                            <div className="text-[11px] font-mono text-white/60 tracking-wider bg-white/5 px-2 py-1 rounded-xs border border-white/5">{track.genre || 'GENERIC'}</div>
-                                                                        </div>
-                                                                        <div className="flex flex-col">
-                                                                            <div className="text-[7px] font-mono font-black text-white/20 uppercase tracking-[0.3em] mb-1">Entry_Timestamp</div>
-                                                                            <div className="text-[11px] font-mono text-white/60 tracking-wider bg-white/5 px-2 py-1 rounded-xs border border-white/5">{track.dateAdded}</div>
-                                                                        </div>
-                                                                        <div className="flex flex-col">
-                                                                            <div className="text-[7px] font-mono font-black text-white/20 uppercase tracking-[0.3em] mb-1">System_Match</div>
-                                                                            <div className="flex items-center gap-2 px-2 py-1 bg-white/5 rounded-xs border border-white/5">
-                                                                                <div className={`w-2 h-2 rounded-full ${track.analyzed ? 'bg-signal-nominal shadow-[0_0_5px_#16a34a]' : 'bg-white/10'}`} />
-                                                                                <span className="text-[10px] font-mono text-white/60">{track.analyzed ? 'SYNC_COMPLETE' : 'PENDING'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </motion.div>
-                                                    )}
-                                                </AnimatePresence>
+                                                <div className="font-mono text-[10px] font-bold text-text-secondary">
+                                                    {formatTime(track.duration)}
+                                                </div>
                                             </motion.div>
                                         );
-                                    })}
-                                </AnimatePresence>
-
-                                <div className="h-20 flex items-center justify-center border-t border-white/[0.02]">
-                                    <span className="text-[8px] font-mono font-black text-white/10 uppercase tracking-[0.6em]">End_of_Transmission</span>
+                                    })
+                                )}
+                            </div>
+                        </div>
+                        <aside
+                            className="surface-panel flex w-[360px] shrink-0 flex-col overflow-hidden rounded-panel"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="border-b border-white/6 px-4 py-4">
+                                <SectionLabel>Inspector</SectionLabel>
+                                <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
+                                    {focusedTrack ? 'Selected track' : 'Nothing selected'}
                                 </div>
                             </div>
-                    </>
-                )}
 
+                            {focusedTrack ? (
+                                <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
+                                    <div className="overflow-hidden rounded-panel border border-white/8 bg-black/30">
+                                        <div className="relative aspect-square overflow-hidden border-b border-white/6">
+                                            <OptimizedImage
+                                                alt={focusedTrack.album}
+                                                fallbackGradient={generateGradient(focusedTrack.id)}
+                                                className="h-full w-full object-cover"
+                                            />
+                                            {selectedTrackIds.size > 1 ? (
+                                                <div className="absolute right-3 top-3 rounded-full border border-signal-sync/28 bg-signal-sync/14 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-signal-sync">
+                                                    {selectedTrackIds.size} selected
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="space-y-4 p-4">
+                                            <div>
+                                                <div className="font-sans text-[20px] font-bold tracking-tight text-text-primary">
+                                                    {focusedTrack.title}
+                                                </div>
+                                                <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                                    {focusedTrack.artist || 'Unknown artist'}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <StatChip label="BPM" value={focusedTrack.bpm ? focusedTrack.bpm.toFixed(1) : '--.-'} accent="green" />
+                                                <StatChip
+                                                    label="Key"
+                                                    value={focusedTrack.key || '--'}
+                                                    accent={effectiveActiveKey && isHarmonicMatch(effectiveActiveKey, focusedTrack.key) ? 'green' : null}
+                                                />
+                                                <StatChip label="Length" value={formatTime(focusedTrack.duration)} />
+                                                <StatChip label="Date" value={formatDateValue(focusedTrack.dateAdded)} />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'A', track: focusedTrack })}
+                                                    className="rounded-btn-sm border border-signal-sync/28 bg-signal-sync/14 px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-signal-sync transition-all hover:bg-signal-sync/22"
+                                                >
+                                                    Load Deck A
+                                                </button>
+                                                <button
+                                                    onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'B', track: focusedTrack })}
+                                                    className="rounded-btn-sm border border-signal-sync/28 bg-signal-sync/14 px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-signal-sync transition-all hover:bg-signal-sync/22"
+                                                >
+                                                    Load Deck B
+                                                </button>
+                                            </div>
+
+                                            <button
+                                                onClick={(event) => handleAddToPlaylist(event, focusedTrack.id)}
+                                                disabled={playlists.length === 0}
+                                                className={`w-full rounded-btn-sm border px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] transition-all ${
+                                                    playlists.length === 0
+                                                        ? 'cursor-not-allowed border-white/8 bg-white/[0.03] text-white/25'
+                                                        : 'border-white/10 bg-black/35 text-text-primary hover:border-white/18 hover:bg-white/[0.03]'
+                                                }`}
+                                            >
+                                                Add to playlist
+                                            </button>
+
+                                            <div className="space-y-3 rounded-panel border border-white/6 bg-black/25 p-4">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <SectionLabel>Album</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.album || 'Unknown'}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <SectionLabel>Genre</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.genre || 'Unknown'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <SectionLabel>Rating</SectionLabel>
+                                                        <div className="mt-1">
+                                                            <StarRating
+                                                                rating={focusedTrack.rating || 0}
+                                                                onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: focusedTrack.id, rating })}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <SectionLabel>Status</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.analyzed ? 'Analyzed' : 'Pending'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {effectiveActiveKey ? (
+                                                    <div>
+                                                        <SectionLabel>Harmonic match</SectionLabel>
+                                                        <div className={`mt-1 font-mono text-[10px] ${
+                                                            focusedTrack.key && isHarmonicMatch(effectiveActiveKey, focusedTrack.key)
+                                                                ? 'text-signal-nominal'
+                                                                : 'text-text-secondary'
+                                                        }`}>
+                                                            {focusedTrack.key && isHarmonicMatch(effectiveActiveKey, focusedTrack.key)
+                                                                ? `Matches active deck key ${effectiveActiveKey}`
+                                                                : `No direct harmonic match for ${effectiveActiveKey}`}
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                <div>
+                                                    <SectionLabel>Source</SectionLabel>
+                                                    <div className="mt-1 break-all font-mono text-[9px] text-text-secondary">
+                                                        {focusedTrack.filePath || 'No source path available'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-1 items-center justify-center p-8">
+                                    <div className="max-w-[220px] text-center">
+                                        <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                                            Select a track
+                                        </div>
+                                        <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                            The inspector shows metadata, harmonic context, and fast load actions for the current selection.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </aside>
+                    </div>
+                )}
             </div>
 
-            {/* Modal Playlist Picker (Tactile) */}
-            {showPlaylistPicker && (
+            {showPlaylistPicker ? (
                 <div
-                    className="fixed z-[100] bg-black/90 backdrop-blur-xl border border-white/20 rounded-xs shadow-[0_20px_50px_rgba(0,0,0,0.8)] py-2 min-w-[200px] animate-in zoom-in-95 duration-200"
+                    className="fixed z-[100] min-w-[220px] rounded-panel border border-white/14 bg-black/92 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.7)] backdrop-blur-xl"
                     style={{ left: showPlaylistPicker.x, top: showPlaylistPicker.y }}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
                 >
-                    <div className="px-4 py-2 text-[8px] font-mono font-black text-signal-sync uppercase tracking-[0.3em] border-b border-white/10 mb-1 flex items-center justify-between">
-                        <span>Assign_Unit</span>
-                        <div className="w-1.5 h-1.5 rounded-full bg-signal-sync" />
+                    <div className="border-b border-white/8 px-2 py-2 font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
+                        Add to playlist
                     </div>
-                    {playlists.map(p => (
-                        <button
-                            key={p.id}
-                            onClick={() => {
-                                dispatch({ type: 'LIBRARY_ADD_TO_PLAYLIST', playlistId: p.id, trackId: showPlaylistPicker.trackId });
-                                setShowPlaylistPicker(null);
-                            }}
-                            className="w-full text-left px-4 py-2 text-[10px] font-mono font-bold text-white/60 hover:bg-signal-sync/20 hover:text-white transition-all flex items-center justify-between group"
-                        >
-                            <span className="truncate tracking-widest">{p.name.toUpperCase()}</span>
-                            <span className="text-[8px] opacity-0 group-hover:opacity-100 transition-opacity">&gt;&gt;</span>
-                        </button>
-                    ))}
-                    {playlists.length === 0 && <div className="px-4 py-3 text-[10px] text-white/20 italic">No_Active_Collections</div>}
+                    <div className="pt-1">
+                        {playlists.length === 0 ? (
+                            <div className="px-2 py-3 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                No playlists available
+                            </div>
+                        ) : (
+                            playlists.map((playlist: Playlist) => (
+                                <button
+                                    key={playlist.id}
+                                    onClick={() => {
+                                        dispatch({
+                                            type: 'LIBRARY_ADD_TO_PLAYLIST',
+                                            playlistId: playlist.id,
+                                            trackId: showPlaylistPicker.trackId,
+                                        });
+                                        setShowPlaylistPicker(null);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-btn-sm px-3 py-2 text-left font-mono text-[9px] font-black uppercase tracking-[0.16em] text-text-primary transition-all hover:bg-white/[0.05]"
+                                >
+                                    <span className="truncate">{playlist.name}</span>
+                                    <span className="text-text-secondary">{playlist.trackIds.length}</span>
+                                </button>
+                            ))
+                        )}
+                    </div>
                 </div>
-            )}
+            ) : null}
         </div>
     );
 };

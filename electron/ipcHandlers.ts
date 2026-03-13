@@ -13,6 +13,24 @@ const prisma = new PrismaClient();
 let handlersRegistered = false;
 let currentStemAbortController: AbortController | null = null;
 
+function isBrokenPipeError(error: unknown): error is NodeJS.ErrnoException {
+    return typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && ((error as NodeJS.ErrnoException).code === 'EPIPE'
+            || (error as NodeJS.ErrnoException).code === 'ERR_STREAM_DESTROYED');
+}
+
+function safeMainConsole(method: 'log' | 'warn' | 'error', ...args: unknown[]) {
+    try {
+        console[method](...args);
+    } catch (error) {
+        if (!isBrokenPipeError(error)) {
+            throw error;
+        }
+    }
+}
+
 function toTrackCreateData(track: any) {
     return {
         id: track.id,
@@ -384,7 +402,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): () => void {
         try {
             const prolink = await import('prolink-connect');
             const network = await prolink.bringOnline();
-            console.log('[Electron Main] ProLink network online.');
+            safeMainConsole('log', '[Electron Main] ProLink network online.');
 
             const onConnected = (device: any) => {
                 safeSend('prolink:device', { type: 'DEVICE_ADDED', device });
@@ -416,7 +434,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): () => void {
                 network.statusEmitter?.off('status', onStatus);
             };
         } catch (err) {
-            console.warn('[Electron Main] ProLink hardware integration failed:', err);
+            safeMainConsole('warn', '[Electron Main] ProLink hardware integration failed:', err);
         }
     };
 

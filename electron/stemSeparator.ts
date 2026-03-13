@@ -2,6 +2,10 @@ import * as ort from 'onnxruntime-node';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const TARGET_SAMPLE_RATE = 44100;
 const DEFAULT_CHUNK_SIZE = 343980;

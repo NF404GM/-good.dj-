@@ -5,9 +5,24 @@ function isAbsoluteTrackPath(filePath?: string) {
     return Boolean(filePath && /^([A-Z]:\\|\/)/i.test(filePath));
 }
 
+function isManagedServerTrackPath(filePath?: string) {
+    return Boolean(filePath && /^\/?(audio|uploads)\//i.test(filePath));
+}
+
+function toServerAssetUrl(filePath: string) {
+    return `${SERVER_BASE}/${filePath.replace(/^\//, '')}`;
+}
+
 function normalizeTrack(track: any): LibraryTrack {
+    const normalizedDateAdded = track.dateAdded instanceof Date
+        ? track.dateAdded.toISOString().split('T')[0]
+        : typeof track.dateAdded === 'string'
+            ? track.dateAdded
+            : new Date(track.dateAdded ?? Date.now()).toISOString().split('T')[0];
+
     return {
         ...track,
+        dateAdded: normalizedDateAdded,
         beats: track.beatsJson ? JSON.parse(track.beatsJson) : undefined,
         storageKey: track.id
     };
@@ -22,17 +37,17 @@ export class LibraryService {
         return Promise.resolve();
     }
 
-    public async saveTrack(track: LibraryTrack, file?: File): Promise<void> {
+    public async saveTrack(track: LibraryTrack, file?: File): Promise<LibraryTrack> {
         if (window.gooddj) {
             if (file) {
                 const filePath = (file as any).path;
                 if (filePath) {
-                    await window.gooddj.library.saveTrack({ ...track, filePath });
-                    return;
+                    const saved = await window.gooddj.library.saveTrack({ ...track, filePath });
+                    return normalizeTrack(saved);
                 }
             } else {
-                await window.gooddj.library.updateTrack(track.id, track);
-                return;
+                const updated = await window.gooddj.library.updateTrack(track.id, track);
+                return normalizeTrack(updated);
             }
         }
 
@@ -49,19 +64,20 @@ export class LibraryService {
             formData.append('rating', track.rating.toString());
             formData.append('analyzed', track.analyzed.toString());
 
-            await fetch(`${API_BASE}/tracks/upload`, {
+            const res = await fetch(`${API_BASE}/tracks/upload`, {
                 method: 'POST',
                 body: formData,
             });
-            return;
+            return normalizeTrack(await res.json());
         }
 
         const { fileBlob, ...metadata } = track;
-        await fetch(`${API_BASE}/tracks/${track.id}`, {
+        const res = await fetch(`${API_BASE}/tracks/${track.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(metadata)
         });
+        return normalizeTrack(await res.json());
     }
 
     public async setTrackRating(trackId: string, rating: number): Promise<void> {
@@ -113,30 +129,53 @@ export class LibraryService {
     public getTrackUrl(track: LibraryTrack): string {
         const p = track.filePath ?? '';
 
+        if (!p) {
+            return '';
+        }
+
         if (p.startsWith('http://') || p.startsWith('https://')) {
             return p;
         }
 
-        if (typeof window !== 'undefined' && window.gooddj) {
-            return `gooddj-file://${encodeURIComponent(p)}`;
+        if (isManagedServerTrackPath(p)) {
+            return toServerAssetUrl(p);
         }
 
-        if (p.startsWith('/uploads/') || p.startsWith('uploads/')) {
-            return `${SERVER_BASE}/${p.replace(/^\//, '')}`;
+        if (typeof window !== 'undefined' && window.gooddj && isAbsoluteTrackPath(p)) {
+            return `gooddj-file://${encodeURIComponent(p)}`;
         }
 
         return `${SERVER_BASE}/api/file?path=${encodeURIComponent(p)}`;
     }
 
-    public async getTrackBlob(id: string): Promise<Blob | null> {
-        const track = await this.getTrackById(id);
-        if (!track || !track.filePath) {
+    public async getTrackBlob(id: string, filePath?: string): Promise<Blob | null> {
+        const resolvedPath = filePath ?? (await this.getTrackById(id))?.filePath;
+        if (!resolvedPath) {
             return null;
         }
 
-        if (window.gooddj && isAbsoluteTrackPath(track.filePath)) {
+        if (isManagedServerTrackPath(resolvedPath)) {
+            const managedUrl = this.getTrackUrl({ id, filePath: resolvedPath } as LibraryTrack);
+            if (!managedUrl) {
+                return null;
+            }
+
             try {
-                const bytes = await window.gooddj.library.readTrackFile(track.filePath);
+                const res = await fetch(managedUrl);
+                if (!res.ok) {
+                    return null;
+                }
+
+                return await res.blob();
+            } catch (e) {
+                console.error('[good.dj] Failed to fetch managed track blob:', e);
+                return null;
+            }
+        }
+
+        if (window.gooddj && isAbsoluteTrackPath(resolvedPath)) {
+            try {
+                const bytes = await window.gooddj.library.readTrackFile(resolvedPath);
                 return new Blob([bytes]);
             } catch (e) {
                 console.error('[good.dj] Failed to read local track file:', e);
@@ -144,7 +183,11 @@ export class LibraryService {
             }
         }
 
-        const url = this.getTrackUrl(track);
+        const url = this.getTrackUrl({ id, filePath: resolvedPath } as LibraryTrack);
+        if (!url) {
+            return null;
+        }
+
         try {
             const res = await fetch(url);
             if (!res.ok) {
@@ -200,17 +243,22 @@ export class LibraryService {
             }));
         }
 
-        const res = await fetch(`${API_BASE}/playlists`);
-        if (!res.ok) {
+        try {
+            const res = await fetch(`${API_BASE}/playlists`);
+            if (!res.ok) {
+                return [];
+            }
+
+            const playlists = await res.json();
+            return playlists.map((playlist: any) => ({
+                id: playlist.id,
+                name: playlist.name,
+                trackIds: playlist.tracks.map((track: any) => track.trackId)
+            }));
+        } catch (e) {
+            console.error('[good.dj] Could not fetch playlists:', e);
             return [];
         }
-
-        const playlists = await res.json();
-        return playlists.map((playlist: any) => ({
-            id: playlist.id,
-            name: playlist.name,
-            trackIds: playlist.tracks.map((track: any) => track.trackId)
-        }));
     }
 
     public async addTrackToPlaylist(playlistId: string, trackId: string): Promise<void> {

@@ -22,8 +22,20 @@ export const ActivationGate: React.FC<ActivationGateProps> = ({ children }) => {
 
     // Check if we're running in Electron
     const isElectron = !!window.gooddj;
+    const shouldBypassLicense = import.meta.env.DEV
+        && import.meta.env.VITE_BYPASS_LICENSE_IN_DEV === 'true';
 
     useEffect(() => {
+        if (shouldBypassLicense) {
+            setStatus('activated');
+            if (isElectron) {
+                window.gooddj!.getVersion().then(setVersion).catch(() => {
+                    // Version display is optional while bypassing activation in dev.
+                });
+            }
+            return;
+        }
+
         if (!isElectron) {
             setStatus('activated');
             return;
@@ -40,7 +52,7 @@ export const ActivationGate: React.FC<ActivationGateProps> = ({ children }) => {
         });
 
         window.gooddj!.getVersion().then(setVersion);
-    }, []);
+    }, [isElectron, shouldBypassLicense]);
 
     const handleActivate = async () => {
         if (!licenseKey.trim() || !window.gooddj) return;
