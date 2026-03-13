@@ -1,5 +1,0 @@
-﻿
-> good.dj@0.0.0 typecheck
-> tsc --noEmit
-
-hooks/useDjState.ts(556,62): error TS2341: Property 'processWaveform' is private and only accessible within class 'AudioEngineService'.

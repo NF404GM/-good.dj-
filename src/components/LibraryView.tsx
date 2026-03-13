@@ -5,6 +5,7 @@ import { useDjState } from '../hooks/useDjState';
 import { LibraryTrack, DeckAction, Playlist } from '../types';
 import { OptimizedImage } from './OptimizedImage';
 import { isHarmonicMatch, shiftCamelotKey } from '../services/trackAnalyzer';
+import { API_BASE, SERVER_BASE } from '../services/config';
 
 interface LibraryViewProps {
     dispatch: (action: DeckAction) => void;
@@ -67,7 +68,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
 
     useEffect(() => {
         if (showRecordings) {
-            fetch('http://127.0.0.1:3002/api/recordings')
+            fetch(`${API_BASE}/recordings`)
                 .then(res => res.json())
                 .then(data => setRecordings(data));
         }
@@ -385,13 +386,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
                                         <span className="text-[8px] text-white/30 font-mono tracking-widest uppercase">{new Date(rec.dateRecorded).toLocaleString()}</span>
                                     </div>
                                     <div className="flex items-center gap-6">
-                                        <audio controls src={`http://127.0.0.1:3002${rec.filePath}`} className="hidden" id={`audio-${rec.id}`} />
+                                        <audio controls src={`${SERVER_BASE}${rec.filePath}`} className="hidden" id={`audio-${rec.id}`} />
                                         <div className="flex gap-2">
-                                            <a href={`http://127.0.0.1:3002${rec.filePath}`} download className="px-3 py-1 bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 rounded-xs text-[9px] font-mono font-black uppercase tracking-wider transition-all">Export</a>
+                                            <a href={`${SERVER_BASE}${rec.filePath}`} download className="px-3 py-1 bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 rounded-xs text-[9px] font-mono font-black uppercase tracking-wider transition-all">Export</a>
                                             <button
                                                 onClick={() => {
                                                     if (confirm('Permanently delete record?')) {
-                                                        fetch(`http://127.0.0.1:3002/api/recordings/${rec.id}`, { method: 'DELETE' }).then(() => setRecordings(recordings.filter(r => r.id !== rec.id)));
+                                                        fetch(`${API_BASE}/recordings/${rec.id}`, { method: 'DELETE' }).then(() => setRecordings(recordings.filter(r => r.id !== rec.id)));
                                                     }
                                                 }}
                                                 className="px-3 py-1 bg-signal-clipping/10 hover:bg-signal-clipping/30 text-signal-clipping border border-signal-clipping/20 rounded-xs text-[9px] font-mono font-black uppercase tracking-wider transition-all"
@@ -487,7 +488,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
                                             >
                                                 <motion.div
                                                     draggable={true}
-                                                    onDragStart={(e) => handleDragStart(e, track.id)}
+                                                    onDragStart={(e) => handleDragStart(e as unknown as React.DragEvent, track.id)}
                                                     whileHover={{ x: 2 }}
                                                     className={`grid grid-cols-12 gap-0 px-4 py-[6px] border-b border-white/[0.03] items-center group transition-all cursor-pointer select-none relative
                                                         ${isSelected ? 'bg-signal-sync/20 text-white z-10' : (isExpanded ? 'bg-white/[0.04]' : isCompatible ? 'bg-signal-nominal/[0.04] hover:bg-signal-nominal/[0.08]' : 'hover:bg-white/[0.02]')}`}

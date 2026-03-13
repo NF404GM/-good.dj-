@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../services/audio', () => ({
+vi.mock('../src/services/audio', () => ({
   AudioEngine: {
     setCrossfader: vi.fn(),
     setChannelGain: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('../services/audio', () => ({
   },
 }));
 
-vi.mock('../services/library', () => ({
+vi.mock('../src/services/library', () => ({
   goodDB: {
     init: vi.fn(),
     getAllTracks: vi.fn().mockResolvedValue([]),
@@ -47,7 +47,7 @@ vi.mock('../services/library', () => ({
   },
 }));
 
-vi.mock('../services/midi', () => ({
+vi.mock('../src/services/midi', () => ({
   MidiService: class {
     init() {}
     setMappings() {}
@@ -55,8 +55,8 @@ vi.mock('../services/midi', () => ({
   },
 }));
 
-import { djReducer, initialState } from '../hooks/useDjState';
-import type { GlobalDjState, TrackData } from '../types';
+import { djReducer, initialState } from '../src/hooks/useDjState';
+import type { GlobalDjState, TrackData } from '../src/types';
 
 const makeState = (): GlobalDjState => structuredClone(initialState);
 

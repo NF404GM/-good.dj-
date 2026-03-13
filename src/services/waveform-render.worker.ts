@@ -19,7 +19,7 @@ interface RenderState {
     dpr: number;
 }
 
-let state: RenderState = {
+const state: RenderState = {
     data: null,
     progress: 0,
     isPlaying: false,
@@ -40,7 +40,7 @@ self.onmessage = (e: MessageEvent) => {
                 canvas = msg.canvas as OffscreenCanvas;
                 ctx = canvas.getContext('2d', { alpha: true });
             }
-            // Fallthrough to sync data and state
+            // Intentional fallthrough to sync the first render payload.
         case 'UPDATE_DATA':
         case 'UPDATE_STATE':
             if (msg.data !== undefined) state.data = msg.data;
@@ -143,14 +143,9 @@ function render() {
                 ctx.globalCompositeOperation = 'source-over';
             }
         } else {
-            const t = isPlaying ? Date.now() / 1000 : 0;
-            const wave1 = Math.sin(normalizedPos * 20 + t) * 0.5;
-            const wave2 = Math.cos(normalizedPos * 45 - t * 2) * 0.3;
-            const envelope = Math.sin(normalizedPos * Math.PI);
-            const amplitude = (Math.abs(wave1) + Math.abs(wave2)) * envelope * 0.4;
-            const barHeight = Math.max(amplitude, 0.01) * (h * 0.45);
-            ctx.fillStyle = isPast ? themeActiveColor : themeIdleColor;
-            ctx.fillRect(x, centerY - barHeight, barWidth, barHeight * 2);
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, centerY - 1, w, 2);
+            break;
         }
     }
 

@@ -20,10 +20,10 @@ const createInitialDeck = (id: string, track: TrackData | null): DeckState => ({
     level: 0,
     channelVolume: 0.8,
     stems: {
-        [StemType.DRUMS]: { active: true, volume: 1, param: 0 },
+        [StemType.LOW]: { active: true, volume: 1, param: 0 },
         [StemType.BASS]: { active: true, volume: 1, param: 0.5 },
-        [StemType.VOCALS]: { active: true, volume: 1, param: 0.5 },
-        [StemType.HARMONIC]: { active: true, volume: 1, param: 0.5 },
+        [StemType.MID]: { active: true, volume: 1, param: 0.5 },
+        [StemType.HIGH]: { active: true, volume: 1, param: 0.5 },
     },
     eq: { trim: 0.75, high: 0.5, mid: 0.5, low: 0.5 },
     fx: { active: false, activeType: EffectType.DELAY, wet: 0.5, knob1: 0.5, knob2: 0.5 },
@@ -34,7 +34,9 @@ const createInitialDeck = (id: string, track: TrackData | null): DeckState => ({
     keyLock: false,
     keyShift: 0,
     color: 0.5,
-    isSynced: false
+    isSynced: false,
+    stemMode: 'filters',
+    isSeparatingStems: false,
 });
 
 // Load saved mappings (guarded for incognito / restricted contexts)
@@ -78,6 +80,9 @@ export const djReducer = (state: GlobalDjState, action: DeckAction): GlobalDjSta
             deck.isPlaying = !deck.isPlaying;
             break;
         }
+        case 'SET_PLAYING':
+            draft.decks[action.deckId as 'A' | 'B'].isPlaying = action.value;
+            break;
         case 'SYNC_DECK':
             draft.activeDeckId = action.deckId;
             draft.decks[action.deckId as 'A' | 'B'].isSynced = true;
@@ -160,6 +165,20 @@ export const djReducer = (state: GlobalDjState, action: DeckAction): GlobalDjSta
         case 'LOOP_TRACK':
             draft.decks[action.deckId as 'A' | 'B'].activeLoop = action.beats;
             break;
+        case 'LOOP_HALVE': {
+            const deck = draft.decks[action.deckId as 'A' | 'B'];
+            if (deck.activeLoop !== null && deck.activeLoop > 0.25) {
+                deck.activeLoop = deck.activeLoop / 2;
+            }
+            break;
+        }
+        case 'LOOP_DOUBLE': {
+            const deck = draft.decks[action.deckId as 'A' | 'B'];
+            if (deck.activeLoop !== null) {
+                deck.activeLoop = deck.activeLoop * 2;
+            }
+            break;
+        }
 
         case 'LOAD_TRACK': {
             const d = draft.decks[action.deckId as 'A' | 'B'];
@@ -177,6 +196,8 @@ export const djReducer = (state: GlobalDjState, action: DeckAction): GlobalDjSta
             d.pitch = 0;
             d.channelVolume = 0.8;
             d.isSynced = false;
+            d.stemMode = 'filters';
+            d.isSeparatingStems = false;
             break;
         }
         case 'EJECT_TRACK':
@@ -201,6 +222,13 @@ export const djReducer = (state: GlobalDjState, action: DeckAction): GlobalDjSta
 
         case 'SET_WAVEFORM':
             draft.decks[action.deckId as 'A' | 'B'].waveformData = action.data;
+            break;
+        case 'SET_STEMS_LOADING':
+            draft.decks[action.deckId as 'A' | 'B'].isSeparatingStems = action.value;
+            break;
+        case 'STEMS_LOADED':
+            draft.decks[action.deckId as 'A' | 'B'].stemMode = 'real';
+            draft.decks[action.deckId as 'A' | 'B'].isSeparatingStems = false;
             break;
         case 'UPDATE_TRACK_METADATA': {
             const track = draft.decks[action.deckId as 'A' | 'B'].track;
@@ -320,21 +348,22 @@ function useDjStore() {
         };
         initLib();
 
-        // --- PROLINK HARDWARE INTEGRATION ---
+        let cleanupProlink: Array<() => void> = [];
         if (window.gooddj) {
-            window.gooddj.onPlayerStatus((status) => {
+            const offStatus = window.gooddj.onPlayerStatus((status) => {
                 console.log(`[good.dj ProLink] CDJ Status Update:`, status);
-                // Dispatch logic for ProLink status (Phase 8 requirement)
-                // For now, we just log to verify connection
             });
 
-            window.gooddj.onDeviceUpdate((data) => {
+            const offDevice = window.gooddj.onDeviceUpdate((data) => {
                 console.log(`[good.dj ProLink] Device update:`, data);
             });
+
+            cleanupProlink = [offStatus, offDevice];
         }
 
         return () => {
             AudioEngine.onTrackEnd = null;
+            cleanupProlink.forEach((cleanup) => cleanup());
         };
     }, []);
 
@@ -370,8 +399,8 @@ function useDjStore() {
             AudioEngine.setPitch(action.deckId, effective);
         }
         else if (action.type === 'SET_PITCH_RANGE') {
-            const deck = stateRef.current.decks[action.deckId as 'A' | 'B'];
-            const effective = deck.pitch * action.value;
+            const currentPitch = stateRef.current.decks[action.deckId as 'A' | 'B'].pitch;
+            const effective = currentPitch * action.value;
             AudioEngine.setPitch(action.deckId, effective);
         }
         else if (action.type === 'SET_CHANNEL_VOLUME') AudioEngine.setChannelGain(action.deckId, action.value);
@@ -415,10 +444,9 @@ function useDjStore() {
             const val = deckState.cuePoints[action.index];
             if (val !== null) {
                 AudioEngine.seek(action.deckId, val);
-                // True Hot Cue behavior: hitting it immediately starts playback
                 if (!deckState.isPlaying) {
                     AudioEngine.play(action.deckId);
-                    dispatch({ type: 'TOGGLE_PLAY', deckId: action.deckId });
+                    dispatch({ type: 'SET_PLAYING', deckId: action.deckId, value: true });
                 }
             }
         }
@@ -449,6 +477,26 @@ function useDjStore() {
         else if (action.type === 'SET_COLOR_FILTER') AudioEngine.setColorFilter(action.deckId, action.value);
         else if (action.type === 'TOGGLE_KEY_LOCK') AudioEngine.setKeyLock(action.deckId, !stateRef.current.decks[action.deckId as 'A' | 'B'].keyLock);
         else if (action.type === 'SET_KEY_SHIFT') AudioEngine.setKeyShift(action.deckId, action.value);
+        else if (action.type === 'SEPARATE_STEMS') {
+            const deckState = stateRef.current.decks[action.deckId as 'A' | 'B'];
+            const filePath = deckState.track?.filePath;
+
+            if (!window.gooddj?.stems || !filePath) {
+                console.warn('[useDjState] Stem separation is only available in Electron with a real file path.');
+                return;
+            }
+
+            dispatch({ type: 'SET_STEMS_LOADING', deckId: action.deckId, value: true });
+            try {
+                const stems = await window.gooddj.stems.separate(filePath);
+                await AudioEngine.loadStems(action.deckId, stems);
+                dispatch({ type: 'STEMS_LOADED', deckId: action.deckId });
+            } catch (err) {
+                console.error('[useDjState] Stem separation failed:', err);
+                dispatch({ type: 'SET_STEMS_LOADING', deckId: action.deckId, value: false });
+            }
+            return;
+        }
 
         else if (action.type === 'DOUBLE_DECK') {
             const sourceId = action.deckId === 'A' ? 'B' : 'A';
@@ -483,15 +531,15 @@ function useDjStore() {
                         artist: "LOCAL AUDIO",
                         bpm: 124.0,
                         key: '1A',
-                        duration: duration
+                        duration: duration,
+                        filePath: (action.file as any).path
                     },
                     hasAudioBuffer: true
                 });
                 dispatch({ type: 'SET_WAVEFORM', deckId: action.deckId, data: waveform });
-                // Background: Run Essentia.js analysis
                 if (loadedBuffer) {
                     const filePath = (action.file as any).path;
-                    analyzeTrack(loadedBuffer, filePath).then((result) => {
+                    analyzeTrack(loadedBuffer, filePath, { mode: 'direct' }).then((result) => {
                         dispatch({ type: 'UPDATE_TRACK_METADATA', deckId: action.deckId, bpm: result.bpm, key: result.key });
                     }).catch((err) => console.warn('[useDjState] Track analysis failed:', err));
                 }
@@ -522,11 +570,10 @@ function useDjStore() {
                     const updatedTrack = { ...action.track, duration: duration || action.track.duration };
                     dispatch({ type: 'LOAD_TRACK', deckId: action.deckId, track: updatedTrack, hasAudioBuffer: true });
                     dispatch({ type: 'SET_WAVEFORM', deckId: action.deckId, data: waveform });
-                    // Background: Run Essentia.js analysis
                     const loadedBuffer = AudioEngine.getBuffer(action.deckId);
                     if (loadedBuffer) {
                         const filePath = (action.track as LibraryTrack).filePath;
-                        analyzeTrack(loadedBuffer, filePath).then((result) => {
+                        analyzeTrack(loadedBuffer, filePath, { mode: 'direct' }).then((result) => {
                             dispatch({ type: 'UPDATE_TRACK_METADATA', deckId: action.deckId, bpm: result.bpm, key: result.key });
                         }).catch((err) => console.warn('[useDjState] Track analysis failed:', err));
                     }
@@ -590,7 +637,7 @@ function useDjStore() {
 
                             try {
                                 console.log(`[good.dj] DEBUG: Starting MIR analysis (15s timeout): ${file.name}`);
-                                const analysisPromise = analyzeTrack(decoded);
+                                const analysisPromise = analyzeTrack(decoded, (file as any).path, { mode: 'worker' });
                                 const timeoutPromise = new Promise((_, reject) =>
                                     setTimeout(() => reject(new Error("MIR Analysis Timeout")), 15000)
                                 );
@@ -616,6 +663,7 @@ function useDjStore() {
             } finally {
                 console.log(`[good.dj] Library import session complete.`);
             }
+            return;
         }
         else if (action.type === 'LIBRARY_CREATE_PLAYLIST') {
             const playlist = await goodDB.createPlaylist(action.name);

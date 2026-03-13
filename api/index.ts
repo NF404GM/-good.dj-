@@ -196,7 +196,6 @@ async function startServer() {
         });
         
         try {
-            // @ts-expect-error - prolink-connect may not be present in Serverless environment
             const { bringOnline } = await import('prolink-connect');
             const network = await bringOnline();
             network.statusEmitter?.on('status', (state: any) => {

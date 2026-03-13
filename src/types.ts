@@ -8,6 +8,7 @@ export interface TrackData {
     key: string;
     duration: number; // seconds
     beats?: number[]; // Array of beat timestamps in seconds for quantized looping
+    filePath?: string;
 }
 
 export interface LibraryTrack extends TrackData {
@@ -28,10 +29,20 @@ export interface Playlist {
 }
 
 export enum StemType {
-    DRUMS = 'DRUMS',
+    LOW = 'LOW',
     BASS = 'BASS',
-    VOCALS = 'VOCALS',
-    HARMONIC = 'HARMONIC',
+    MID = 'MID',
+    HIGH = 'HIGH',
+}
+
+export type StemPlaybackMode = 'filters' | 'real';
+
+export interface StemSeparationResult {
+    drums: number[];
+    bass: number[];
+    other: number[];
+    vocals: number[];
+    sampleRate: number;
 }
 
 
@@ -143,6 +154,8 @@ export interface DeckState {
     color: number; // 0 to 1 (0.5 is off)
     channelVolume: number; // 0 to 1
     isSynced: boolean;
+    stemMode: StemPlaybackMode;
+    isSeparatingStems: boolean;
 }
 
 export interface MidiMapping {
@@ -188,6 +201,7 @@ export interface MidiDevice {
 
 export type DeckAction =
     | { type: 'TOGGLE_PLAY'; deckId: string }
+    | { type: 'SET_PLAYING'; deckId: string; value: boolean }
     | { type: 'SYNC_DECK'; deckId: string }
     | { type: 'SET_CUE'; deckId: string; index: number }
     | { type: 'TRIGGER_CUE'; deckId: string; index: number }
@@ -213,6 +227,7 @@ export type DeckAction =
     | { type: 'SET_FX_PARAM'; deckId: string; knob: 1 | 2; value: number }
     | { type: 'LOAD_TRACK'; deckId: string; track: TrackData; hasAudioBuffer?: boolean }
     | { type: 'LOAD_FILE'; deckId: string; file: File }
+    | { type: 'SEPARATE_STEMS'; deckId: string }
     | { type: 'EJECT_TRACK'; deckId: string }
     | { type: 'DOUBLE_DECK'; deckId: string }
     | { type: 'SET_LOADING'; deckId: string; isLoading: boolean }
@@ -235,6 +250,8 @@ export type DeckAction =
     | { type: 'LIBRARY_SET_RATING'; trackId: string; rating: number }
     | { type: 'TRACK_ENDED'; deckId: string }
     | { type: 'SET_CHANNEL_VOLUME'; deckId: string; value: number }
+    | { type: 'SET_STEMS_LOADING'; deckId: string; value: boolean }
+    | { type: 'STEMS_LOADED'; deckId: string }
     | { type: 'UPDATE_TRACK_METADATA'; deckId: string; bpm: number; key: string };
 
 export interface ArchitectureFile {
@@ -261,6 +278,8 @@ export interface LicenseStatus {
 
 export interface BetterLibraryAPI {
     getTracks: () => Promise<LibraryTrack[]>;
+    getTrackById: (id: string) => Promise<LibraryTrack | null>;
+    readTrackFile: (filePath: string) => Promise<Uint8Array>;
     saveTrack: (track: LibraryTrack) => Promise<LibraryTrack>;
     updateTrack: (id: string, updates: Partial<LibraryTrack>) => Promise<LibraryTrack>;
     getPlaylists: () => Promise<any[]>;
@@ -283,11 +302,14 @@ export interface GoodDJBridge {
     };
     library: BetterLibraryAPI;
     audio: BetterAudioAPI;
+    stems: {
+        separate: (filePath: string) => Promise<StemSeparationResult>;
+    };
     getVersion: () => Promise<string>;
     getUploadsDir: () => Promise<string>;
     platform: string;
-    onPlayerStatus: (callback: (state: any) => void) => void;
-    onDeviceUpdate: (callback: (data: { type: string, device: any }) => void) => void;
+    onPlayerStatus: (callback: (state: any) => void) => () => void;
+    onDeviceUpdate: (callback: (data: { type: string, device: any }) => void) => () => void;
 }
 
 declare global {
@@ -295,5 +317,4 @@ declare global {
         gooddj?: GoodDJBridge;
     }
 }
-
 

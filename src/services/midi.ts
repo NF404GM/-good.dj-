@@ -1,6 +1,5 @@
 
-
-import { DeckAction, StemType, MidiMapping } from '../types';
+import { DeckAction, MidiMapping } from '../types';
 
 export class MidiService {
     private access: any = null;
@@ -135,10 +134,8 @@ export class MidiService {
         } else if (feature === 'VOL') {
             this.onAction({ type: 'SET_CHANNEL_VOLUME', deckId, value });
         } else if (feature === 'PITCH') {
-            // MIDI CC goes 0 to 1. In good.dj -1 is bottom (slow), 1 is top (fast)
-            // Wait, usually Pioneer pitch faders send 0 at the top (fast) and 127 at the bottom (slow).
-            // Let's standard map it: 0.5 is middle. (0.5 - value) * 2 gives 1 to -1.
-            const pitchVal = (0.5 - value) * -2; // Centers it. 
+            const rawPitch = (0.5 - value) * -2;
+            const pitchVal = Math.abs(rawPitch) < 0.02 ? 0 : rawPitch;
             this.onAction({ type: 'SET_PITCH', deckId, value: pitchVal });
         } else if (feature === 'FILTER') {
             // Color filter. Center is 0.5. 

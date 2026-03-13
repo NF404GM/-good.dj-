@@ -1,8 +1,18 @@
-
-
-import { AudioDeck, EqState, EffectType, StemType } from '../types';
+import { AudioDeck, EqState, EffectType, StemSeparationResult, StemType } from '../types';
 import SignalsmithStretch from 'signalsmith-stretch';
 import { EffectsEngine } from './effects_engine';
+import { SERVER_BASE } from './config';
+
+type RealStemName = 'drums' | 'bass' | 'other' | 'vocals';
+
+interface RealStemDeck {
+    enabled: boolean;
+    buffers: Record<RealStemName, AudioBuffer> | null;
+    sources: Record<RealStemName, AudioBufferSourceNode | null>;
+    gains: Record<RealStemName, GainNode>;
+    active: Record<RealStemName, boolean>;
+    volumes: Record<RealStemName, number>;
+}
 
 class AudioEngineService {
     private ctx: AudioContext;
@@ -21,6 +31,7 @@ class AudioEngineService {
     private keyShiftByDeck: Record<string, number> = { A: 0, B: 0 };
     private animationFrameId: number | null = null;
     private tunaFx: EffectsEngine;
+    private stemDecks: Record<string, RealStemDeck> = {};
 
     constructor() {
         this.ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
@@ -53,6 +64,11 @@ class AudioEngineService {
             this.decks = {
                 A: deckA,
                 B: deckB
+            };
+
+            this.stemDecks = {
+                A: this.createRealStemDeck('A'),
+                B: this.createRealStemDeck('B'),
             };
 
             this.levelBuffers = {
@@ -218,6 +234,180 @@ class AudioEngineService {
         };
     }
 
+    private createRealStemDeck(deckId: string): RealStemDeck {
+        const createGain = () => {
+            const gainNode = this.ctx.createGain();
+            gainNode.gain.value = 1;
+            gainNode.connect(this.decks[deckId].trimNode);
+            return gainNode;
+        };
+
+        return {
+            enabled: false,
+            buffers: null,
+            sources: {
+                drums: null,
+                bass: null,
+                other: null,
+                vocals: null,
+            },
+            gains: {
+                drums: createGain(),
+                bass: createGain(),
+                other: createGain(),
+                vocals: createGain(),
+            },
+            active: {
+                drums: true,
+                bass: true,
+                other: true,
+                vocals: true,
+            },
+            volumes: {
+                drums: 1,
+                bass: 1,
+                other: 1,
+                vocals: 1,
+            },
+        };
+    }
+
+    private hasRealStemPlayback(deckId: string) {
+        const stemDeck = this.stemDecks[deckId];
+        return Boolean(stemDeck?.enabled && stemDeck.buffers);
+    }
+
+    private getDeckDuration(deckId: string) {
+        const stemDuration = this.stemDecks[deckId]?.buffers?.drums.duration;
+        return stemDuration ?? this.decks[deckId]?.buffer?.duration ?? 0;
+    }
+
+    private getCurrentPositionSeconds(deckId: string) {
+        const deck = this.decks[deckId];
+        const duration = this.getDeckDuration(deckId) || 1;
+
+        if (!deck.isPlaying) {
+            return Math.min(deck.pauseTime, duration);
+        }
+
+        const pitchRate = 1 + deck.pitch;
+        return ((this.ctx.currentTime - deck.startTime) * pitchRate) % duration;
+    }
+
+    private stemTypeToRealStem(stem: StemType): RealStemName {
+        if (stem === StemType.LOW) return 'drums';
+        if (stem === StemType.BASS) return 'bass';
+        if (stem === StemType.MID) return 'other';
+        return 'vocals';
+    }
+
+    private updateRealStemGain(deckId: string, stemName: RealStemName) {
+        const stemDeck = this.stemDecks[deckId];
+        const gain = stemDeck.active[stemName] ? stemDeck.volumes[stemName] : 0;
+        stemDeck.gains[stemName].gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
+    }
+
+    private clearRealStemSources(deckId: string, when?: number) {
+        const stemDeck = this.stemDecks[deckId];
+        for (const stemName of Object.keys(stemDeck.sources) as RealStemName[]) {
+            const source = stemDeck.sources[stemName];
+            if (!source) {
+                continue;
+            }
+
+            source.onended = null;
+            try {
+                source.stop(when);
+            } catch {
+                // BufferSourceNodes are one-shot and may already be stopped.
+            }
+            source.disconnect();
+            stemDeck.sources[stemName] = null;
+        }
+    }
+
+    private clearRealStems(deckId: string) {
+        this.clearRealStemSources(deckId);
+        const stemDeck = this.stemDecks[deckId];
+        stemDeck.enabled = false;
+        stemDeck.buffers = null;
+    }
+
+    private startRealStemPlayback(deckId: string, offsetSeconds: number, when = this.ctx.currentTime) {
+        const deck = this.decks[deckId];
+        const stemDeck = this.stemDecks[deckId];
+        if (!stemDeck.buffers) {
+            return;
+        }
+
+        const pitchRate = 1 + deck.pitch;
+        const keyShift = this.keyShiftByDeck[deckId] || 0;
+        const playbackRate = pitchRate * Math.pow(2, keyShift / 12);
+        const duration = this.getDeckDuration(deckId);
+        const safeOffset = Math.max(0, Math.min(offsetSeconds, Math.max(duration - 0.001, 0)));
+
+        this.clearRealStemSources(deckId, when);
+
+        for (const stemName of Object.keys(stemDeck.buffers) as RealStemName[]) {
+            const source = this.ctx.createBufferSource();
+            source.buffer = stemDeck.buffers[stemName];
+            source.playbackRate.value = playbackRate;
+            source.connect(stemDeck.gains[stemName]);
+
+            if (deck.isLooping && deck.loopEnd > deck.loopStart) {
+                source.loop = true;
+                source.loopStart = deck.loopStart;
+                source.loopEnd = deck.loopEnd;
+            }
+
+            if (stemName === 'drums') {
+                source.onended = () => {
+                    if (deck.isPlaying && stemDeck.sources.drums === source) {
+                        this.clearRealStemSources(deckId);
+                        deck.isPlaying = false;
+                        deck.pauseTime = duration;
+                        if (this.onTrackEnd) this.onTrackEnd(deckId);
+                    }
+                };
+            }
+
+            source.start(when, safeOffset);
+            stemDeck.sources[stemName] = source;
+            this.updateRealStemGain(deckId, stemName);
+        }
+    }
+
+    private stopCurrentPlayback(deckId: string, when?: number) {
+        const deck = this.decks[deckId];
+
+        if (this.hasRealStemPlayback(deckId)) {
+            this.clearRealStemSources(deckId, when);
+            return;
+        }
+
+        if (deck.source) {
+            deck.source.onended = null;
+            try {
+                deck.source.stop(when);
+            } catch {
+                // Already stopped.
+            }
+            deck.source.disconnect();
+            deck.source = null;
+            return;
+        }
+
+        if (deck.stretchNode) {
+            deck.stretchNode.stop(when);
+        }
+    }
+
+    private createStemBuffer(data: number[], sampleRate: number) {
+        const buffer = this.ctx.createBuffer(1, data.length, sampleRate);
+        buffer.getChannelData(0).set(data);
+        return buffer;
+    }
+
     // --- UTILS ---
 
     private createImpulseResponse(duration: number, decay: number): AudioBuffer {
@@ -271,22 +461,13 @@ class AudioEngineService {
     public async loadFile(deckId: string, file: File): Promise<{ duration: number; waveform: any[] }> {
         await this.ensureReady();
         await this.resume();
-        // this.playSpinUp(); // SFX Removed
 
         const arrayBuffer = await file.arrayBuffer();
         const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
 
         const deck = this.decks[deckId];
-        if (deck.source) {
-            deck.source.onended = null;
-            try {
-                deck.source.stop();
-                deck.source.disconnect();
-            } catch (e) {
-                console.warn("Could not stop prior deck source:", e);
-            }
-            deck.source = null;
-        }
+        this.stopCurrentPlayback(deckId);
+        this.clearRealStems(deckId);
 
         deck.buffer = audioBuffer;
         deck.pauseTime = 0;
@@ -331,16 +512,8 @@ class AudioEngineService {
 
         if (!source.buffer) return;
 
-        if (target.source) {
-            target.source.onended = null;
-            try {
-                target.source.stop();
-                target.source.disconnect();
-            } catch (e) {
-                console.warn("Could not stop target deck source:", e);
-            }
-            target.source = null;
-        }
+        this.stopCurrentPlayback(targetId);
+        this.clearRealStems(targetId);
 
         target.buffer = source.buffer;
         target.isPlaying = false;
@@ -369,14 +542,8 @@ class AudioEngineService {
     public eject(deckId: string) {
         if (!this.isReady) return;
         const deck = this.decks[deckId];
-        if (deck.source) {
-            try {
-                deck.source.onended = null;
-                deck.source.stop();
-                deck.source.disconnect();
-            } catch (e) { }
-            deck.source = null;
-        }
+        this.stopCurrentPlayback(deckId);
+        this.clearRealStems(deckId);
         deck.buffer = null;
         if (deck.stretchNode) deck.stretchNode.dropBuffers();
         deck.isPlaying = false;
@@ -494,6 +661,13 @@ class AudioEngineService {
         const pitchRate = 1 + deck.pitch;
         const keyShift = this.keyShiftByDeck[deckId] || 0;
 
+        if (this.hasRealStemPlayback(deckId)) {
+            this.startRealStemPlayback(deckId, deck.pauseTime);
+            deck.startTime = this.ctx.currentTime - (deck.pauseTime / pitchRate);
+            deck.isPlaying = true;
+            return;
+        }
+
         if (deck.isKeyLockEnabled && deck.stretchNode) {
             try {
                 // start(when, offset, duration, rate, semitones)
@@ -528,20 +702,10 @@ class AudioEngineService {
     public pause(deckId: string) {
         if (!this.isReady) return;
         const deck = this.decks[deckId];
-        if (!deck.isPlaying || !deck.source) return;
+        if (!deck.isPlaying) return;
 
-        const pitchRate = 1 + deck.pitch;
-        const elapsed = (this.ctx.currentTime - deck.startTime) * pitchRate;
-        deck.pauseTime = (elapsed % (deck.buffer?.duration || 1));
-
-        if (deck.source) {
-            deck.source.onended = null;
-            deck.source.stop();
-            deck.source.disconnect();
-            deck.source = null;
-        } else if (deck.stretchNode) {
-            deck.stretchNode.stop();
-        }
+        deck.pauseTime = this.getCurrentPositionSeconds(deckId);
+        this.stopCurrentPlayback(deckId);
 
         deck.isPlaying = false;
     }
@@ -557,7 +721,14 @@ class AudioEngineService {
         if (beatsLength === null) {
             deck.loopStart = 0;
             deck.loopEnd = 0;
-            if (deck.source) {
+            if (this.hasRealStemPlayback(deckId)) {
+                for (const source of Object.values(this.stemDecks[deckId].sources)) {
+                    if (!source) continue;
+                    source.loop = false;
+                    source.loopStart = 0;
+                    source.loopEnd = 0;
+                }
+            } else if (deck.source) {
                 deck.source.loop = false;
                 deck.source.loopStart = 0;
                 deck.source.loopEnd = 0;
@@ -569,11 +740,7 @@ class AudioEngineService {
         }
 
         // Calculate loop points
-        const pitchRate = 1 + deck.pitch;
-        let currentPos = deck.pauseTime;
-        if (deck.isPlaying) {
-            currentPos = ((this.ctx.currentTime - deck.startTime) * pitchRate) % deck.buffer.duration;
-        }
+        const currentPos = this.getCurrentPositionSeconds(deckId);
 
         let loopStart = currentPos;
         let loopEnd = currentPos;
@@ -613,6 +780,20 @@ class AudioEngineService {
         const deck = this.decks[deckId];
         if (!deck.isLooping || deck.loopEnd <= deck.loopStart) return;
 
+        if (this.hasRealStemPlayback(deckId)) {
+            for (const source of Object.values(this.stemDecks[deckId].sources)) {
+                if (!source) continue;
+                source.loop = true;
+                source.loopStart = deck.loopStart;
+                source.loopEnd = deck.loopEnd;
+            }
+
+            if (deck.isPlaying && this.getCurrentPositionSeconds(deckId) > deck.loopEnd) {
+                this.seek(deckId, deck.loopStart / (this.getDeckDuration(deckId) || 1));
+            }
+            return;
+        }
+
         if (deck.isKeyLockEnabled && deck.stretchNode) {
             (deck.stretchNode as any).schedule({
                 outputTime: this.ctx.currentTime,
@@ -627,8 +808,7 @@ class AudioEngineService {
 
             // If we are already PAST the new loop end, jump back immediately
             if (deck.isPlaying && deck.buffer) {
-                const pitchRate = 1 + deck.pitch;
-                const currentPos = ((this.ctx.currentTime - deck.startTime) * pitchRate) % deck.buffer.duration;
+                const currentPos = this.getCurrentPositionSeconds(deckId);
                 if (currentPos > deck.loopEnd) {
                     this.seek(deckId, deck.loopStart / deck.buffer.duration);
                 }
@@ -662,11 +842,12 @@ class AudioEngineService {
     public getLoopBoundaries(deckId: string): { start: number; end: number } | null {
         if (!this.isReady) return null;
         const deck = this.decks[deckId];
-        if (!deck.isLooping || !deck.buffer || deck.loopEnd <= deck.loopStart) return null;
+        const duration = this.getDeckDuration(deckId);
+        if (!deck.isLooping || !duration || deck.loopEnd <= deck.loopStart) return null;
 
         return {
-            start: deck.loopStart / deck.buffer.duration,
-            end: deck.loopEnd / deck.buffer.duration,
+            start: deck.loopStart / duration,
+            end: deck.loopEnd / duration,
         };
     }
 
@@ -675,30 +856,23 @@ class AudioEngineService {
         const deck = this.decks[deckId];
         if (!deck.buffer) return;
 
-        const timeInSeconds = progress * deck.buffer.duration;
+        const duration = this.getDeckDuration(deckId) || deck.buffer.duration;
+        const timeInSeconds = progress * duration;
 
-        if (!deck.isPlaying || !deck.source) {
+        if (!deck.isPlaying) {
             deck.pauseTime = timeInSeconds;
             return;
         }
 
-        // Zero-latency seamless jump using Web Audio API scheduling
         const now = this.ctx.currentTime;
         const pitchRate = 1 + deck.pitch;
         const keyShift = this.keyShiftByDeck[deckId] || 0;
 
-        // Stop current playing node
-        if (deck.source) {
-            deck.source.onended = null;
-            deck.source.stop(now);
-            deck.source.disconnect();
-            deck.source = null;
-        } else if (deck.stretchNode) {
-            deck.stretchNode.stop(now);
-        }
+        this.stopCurrentPlayback(deckId, now);
 
-        // Apply pitch/rate immediately
-        if (deck.isKeyLockEnabled && deck.stretchNode) {
+        if (this.hasRealStemPlayback(deckId)) {
+            this.startRealStemPlayback(deckId, timeInSeconds, now);
+        } else if (deck.isKeyLockEnabled && deck.stretchNode) {
             try {
                 if ((deck.stretchNode as any).schedule) {
                     await (deck.stretchNode as any).schedule({
@@ -716,17 +890,15 @@ class AudioEngineService {
                 console.error(`[AudioEngine] Failed to seek stretchNode for deck ${deckId}`, e);
             }
         } else {
-            // Spin up a new node from the target position
             const newSource = this.ctx.createBufferSource();
             newSource.buffer = deck.buffer;
             newSource.connect(deck.trimNode);
             newSource.playbackRate.value = pitchRate * Math.pow(2, keyShift / 12);
 
-            // Re-attach completion handler
             newSource.onended = () => {
                 if (deck.isPlaying && deck.source === newSource) {
                     deck.isPlaying = false;
-                    deck.pauseTime = deck.buffer?.duration || 0;
+                    deck.pauseTime = this.getDeckDuration(deckId);
                     deck.source = null;
                     if (this.onTrackEnd) this.onTrackEnd(deckId);
                 }
@@ -736,7 +908,6 @@ class AudioEngineService {
             deck.source = newSource;
         }
 
-        // Sync local clock and start playing
         deck.pauseTime = timeInSeconds;
         deck.startTime = now - (timeInSeconds / pitchRate);
 
@@ -751,11 +922,7 @@ class AudioEngineService {
         const deck = this.decks[deckId];
         if (!deck.buffer) return;
 
-        const pitchRate = 1 + deck.pitch;
-        let currentPos = deck.pauseTime;
-        if (deck.isPlaying) {
-            currentPos = ((this.ctx.currentTime - deck.startTime) * pitchRate) % deck.buffer.duration;
-        }
+        const currentPos = this.getCurrentPositionSeconds(deckId);
 
         let newPos = currentPos;
 
@@ -773,14 +940,14 @@ class AudioEngineService {
             if (targetIndex === 0 && beatsMove < 0 && beatIndex === 0) {
                 newPos = Math.max(0, currentPos + (beatsMove * (60 / fallbackBpm)));
             } else if (targetIndex === beats.length - 1 && beatsMove > 0 && beatIndex === beats.length - 1) {
-                newPos = Math.min(deck.buffer.duration, currentPos + (beatsMove * (60 / fallbackBpm)));
+                newPos = Math.min(this.getDeckDuration(deckId) || deck.buffer.duration, currentPos + (beatsMove * (60 / fallbackBpm)));
             }
         } else {
             const beatDuration = 60 / fallbackBpm;
-            newPos = Math.max(0, Math.min(deck.buffer.duration, currentPos + (beatsMove * beatDuration)));
+            newPos = Math.max(0, Math.min(this.getDeckDuration(deckId) || deck.buffer.duration, currentPos + (beatsMove * beatDuration)));
         }
 
-        this.seek(deckId, newPos / deck.buffer.duration);
+        this.seek(deckId, newPos / (this.getDeckDuration(deckId) || deck.buffer.duration));
     }
 
     // --- TRANSPORT LOGIC ---
@@ -867,21 +1034,28 @@ class AudioEngineService {
             const playedTime = (currentCtxTime - deck.startTime) * oldRate;
             deck.startTime = currentCtxTime - (playedTime / newRate);
 
-        if (deck.isKeyLockEnabled && deck.stretchNode) {
-            try {
-                if ((deck.stretchNode as any).setTransposeFactor) {
-                    (deck.stretchNode as any).setTransposeFactor(newRate);
+            if (this.hasRealStemPlayback(deckId)) {
+                const playbackRate = newRate * Math.pow(2, keyShift / 12);
+                for (const source of Object.values(this.stemDecks[deckId].sources)) {
+                    if (source) {
+                        source.playbackRate.value = playbackRate;
+                    }
                 }
-                if ((deck.stretchNode as any).setTransposeSemitones) {
-                    (deck.stretchNode as any).setTransposeSemitones(keyShift);
+            } else if (deck.isKeyLockEnabled && deck.stretchNode) {
+                try {
+                    if ((deck.stretchNode as any).setTransposeFactor) {
+                        (deck.stretchNode as any).setTransposeFactor(newRate);
+                    }
+                    if ((deck.stretchNode as any).setTransposeSemitones) {
+                        (deck.stretchNode as any).setTransposeSemitones(keyShift);
+                    }
+                } catch (e) {
+                    console.error(`[AudioEngine] Failed to update pitch for stretchNode ${deckId}`, e);
                 }
-            } catch (e) {
-                console.error(`[AudioEngine] Failed to update pitch for stretchNode ${deckId}`, e);
+            } else if (deck.source) {
+                const semitoneMultiplier = Math.pow(2, keyShift / 12);
+                deck.source.playbackRate.value = newRate * semitoneMultiplier;
             }
-        } else if (deck.source) {
-            const semitoneMultiplier = Math.pow(2, keyShift / 12);
-            deck.source.playbackRate.value = newRate * semitoneMultiplier;
-        }
         }
     }
 
@@ -903,21 +1077,59 @@ class AudioEngineService {
         this.decks['B'].crossfaderNode.gain.setTargetAtTime(gainB, this.ctx.currentTime, 0.02);
     }
 
+    public async loadStems(deckId: string, stems: StemSeparationResult) {
+        await this.ensureReady();
+        await this.resume();
+
+        const deck = this.decks[deckId];
+        const stemDeck = this.stemDecks[deckId];
+        const wasPlaying = deck.isPlaying;
+        const currentPos = this.getCurrentPositionSeconds(deckId);
+
+        if (wasPlaying) {
+            this.pause(deckId);
+        }
+
+        stemDeck.buffers = {
+            drums: this.createStemBuffer(stems.drums, stems.sampleRate),
+            bass: this.createStemBuffer(stems.bass, stems.sampleRate),
+            other: this.createStemBuffer(stems.other, stems.sampleRate),
+            vocals: this.createStemBuffer(stems.vocals, stems.sampleRate),
+        };
+        stemDeck.enabled = true;
+        deck.pauseTime = currentPos;
+
+        for (const stemName of Object.keys(stemDeck.gains) as RealStemName[]) {
+            this.updateRealStemGain(deckId, stemName);
+        }
+
+        if (wasPlaying) {
+            await this.play(deckId);
+        }
+    }
+
     public setStemState(deckId: string, stem: StemType, volume: number, active: boolean) {
         if (!this.isReady) return;
         const deck = this.decks[deckId];
+        if (this.hasRealStemPlayback(deckId)) {
+            const stemName = this.stemTypeToRealStem(stem);
+            const stemDeck = this.stemDecks[deckId];
+            stemDeck.volumes[stemName] = volume;
+            stemDeck.active[stemName] = active;
+            this.updateRealStemGain(deckId, stemName);
+            return;
+        }
+
         const val = active ? volume : 0;
         const gain = val > 0.01 ? 20 * Math.log10(val) : -60;
 
         if (stem === StemType.BASS) {
             deck.stemFilters.bass.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
-        } else if (stem === StemType.VOCALS) {
+        } else if (stem === StemType.MID) {
             deck.stemFilters.mid.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
-        } else if (stem === StemType.HARMONIC) {
+        } else if (stem === StemType.HIGH) {
             deck.stemFilters.high.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
-        } else if (stem === StemType.DRUMS) {
-            // High-fidelity drum emulation:
-            // Use specialized peaking filters for kick body (60Hz) and hi-hat clarity (8kHz)
+        } else if (stem === StemType.LOW) {
             deck.stemFilters.drumsKick.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
             deck.stemFilters.drumsHigh.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.05);
         }
@@ -994,31 +1206,14 @@ class AudioEngineService {
             this.mediaRecorder = null;
 
             const title = `DJ Mix - ${new Date().toLocaleString()}`;
-
-            // --- ELECTRON NATIVE SAVE ---
-            if (window.gooddj) {
-                try {
-                    console.log("[AudioEngine] Saving recording natively via IPC...");
-                    // We need a path. MediaRecorder gives a blob. 
-                    // In Electron, we can't easily get a "path" for a blob without writing it first.
-                    // But our ipcHandler expects a path. 
-                    // Let's modify the IPC handler later to accept buffers, or for now, use the REST API 
-                    // which is still running in the background of our Electron main process (as a fallover).
-                    // Actually, let's stick to the rest API for the blob upload since it works perfectly.
-                } catch (e) {
-                    console.error("IPC recording save failed:", e);
-                }
-            }
-
-            // Upload the blob to the backend (Works in both Browser and Electron)
             const formData = new FormData();
             formData.append('audio', blob, `mix_${Date.now()}.webm`);
             formData.append('title', title);
-            formData.append('duration', '0'); 
+            formData.append('duration', '0');
 
             try {
                 console.log("[AudioEngine] Uploading recording to backend...");
-                const res = await fetch('http://127.0.0.1:3003/api/recordings', {
+                const res = await fetch(`${SERVER_BASE}/api/recordings`, {
                     method: 'POST',
                     body: formData
                 });
@@ -1069,11 +1264,9 @@ class AudioEngineService {
         deck.isKeyLockEnabled = enabled;
 
         if (deck.isPlaying) {
-            // Swap engines seamlessly
-            const rate = 1 + deck.pitch;
-            const elapsed = (this.ctx.currentTime - deck.startTime) * rate;
-            const timeInSeconds = elapsed % (deck.buffer?.duration || 1);
-            this.seek(deckId, timeInSeconds / (deck.buffer?.duration || 1));
+            const duration = this.getDeckDuration(deckId) || (deck.buffer?.duration || 1);
+            const timeInSeconds = this.getCurrentPositionSeconds(deckId);
+            this.seek(deckId, timeInSeconds / duration);
         } else {
             this.updatePitch(deckId, deck.pitch);
         }
@@ -1097,23 +1290,22 @@ class AudioEngineService {
     public getProgress(deckId: string): number {
         if (!this.isReady) return 0;
         const deck = this.decks[deckId];
-        if (!deck.buffer) return 0;
+        const duration = this.getDeckDuration(deckId);
+        if (!duration) return 0;
 
         if (deck.isPlaying) {
-            const pitchRate = 1 + deck.pitch;
-            const elapsed = (this.ctx.currentTime - deck.startTime) * pitchRate;
+            const elapsed = this.getCurrentPositionSeconds(deckId);
 
             if (deck.isLooping && deck.loopEnd > deck.loopStart) {
-                // Progress within loop region
                 const loopLen = deck.loopEnd - deck.loopStart;
-                const posInTrack = deck.loopStart + ((elapsed - deck.loopStart) % loopLen);
-                return Math.min(posInTrack / deck.buffer.duration, 1.0);
+                const posInTrack = deck.loopStart + ((((elapsed - deck.loopStart) % loopLen) + loopLen) % loopLen);
+                return Math.min(posInTrack / duration, 1.0);
             }
 
-            const progress = elapsed / deck.buffer.duration;
+            const progress = elapsed / duration;
             return Math.min(progress, 1.0);
         } else {
-            return Math.min(deck.pauseTime / deck.buffer.duration, 1.0);
+            return Math.min(deck.pauseTime / duration, 1.0);
         }
     }
 

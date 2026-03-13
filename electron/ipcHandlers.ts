@@ -1,68 +1,211 @@
 import { ipcMain, BrowserWindow, app } from 'electron';
-import { trackQueries, playlistQueries, recordingQueries } from '../server/database.ts';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { PrismaClient } from '@prisma/client';
+import { AudioContext } from 'node-web-audio-api';
+import { separateStems } from './stemSeparator.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const prisma = new PrismaClient();
 
-export function setupIpcHandlers(mainWindow: BrowserWindow): void {
-    const userDataPath = app.getPath('userData');
-    const uploadsDir = path.join(userDataPath, 'uploads');
+let handlersRegistered = false;
 
-    if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+function toTrackCreateData(track: any) {
+    return {
+        id: track.id,
+        title: track.title,
+        artist: track.artist || 'Unknown Artist',
+        album: track.album || 'Imported',
+        genre: track.genre || 'Unknown',
+        bpm: Number(track.bpm ?? 120),
+        key: track.key || '1A',
+        duration: Number(track.duration ?? 0),
+        rating: Number(track.rating ?? 0),
+        dateAdded: track.dateAdded ? new Date(track.dateAdded) : undefined,
+        analyzed: Boolean(track.analyzed),
+        beatsJson: Array.isArray(track.beats) ? JSON.stringify(track.beats) : (track.beatsJson ?? null),
+        filePath: track.filePath ?? null,
+    };
+}
+
+function toTrackUpdateData(updates: any) {
+    const data: Record<string, any> = {};
+    if (updates.title !== undefined) data.title = updates.title;
+    if (updates.artist !== undefined) data.artist = updates.artist;
+    if (updates.album !== undefined) data.album = updates.album;
+    if (updates.genre !== undefined) data.genre = updates.genre;
+    if (updates.bpm !== undefined) data.bpm = Number(updates.bpm);
+    if (updates.key !== undefined) data.key = updates.key;
+    if (updates.duration !== undefined) data.duration = Number(updates.duration);
+    if (updates.rating !== undefined) data.rating = Number(updates.rating);
+    if (updates.dateAdded !== undefined) data.dateAdded = new Date(updates.dateAdded);
+    if (updates.analyzed !== undefined) data.analyzed = Boolean(updates.analyzed);
+    if (updates.filePath !== undefined) data.filePath = updates.filePath;
+    if (updates.beats !== undefined) data.beatsJson = Array.isArray(updates.beats) ? JSON.stringify(updates.beats) : null;
+    if (updates.beatsJson !== undefined) data.beatsJson = updates.beatsJson;
+    return data;
+}
+
+async function migrateLegacyJson(dbFile: string) {
+    if (!fs.existsSync(dbFile)) {
+        return;
     }
 
-    // ── LIBRARY HANDLERS ──
+    console.log('[Electron Main] Found legacy db.json. Migrating...');
+
+    try {
+        const data = JSON.parse(fs.readFileSync(dbFile, 'utf-8'));
+        const trackCount = await prisma.track.count();
+
+        if (trackCount === 0) {
+            if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+                await prisma.track.createMany({
+                    data: data.tracks.map((track: any) => toTrackCreateData(track)),
+                    skipDuplicates: true,
+                });
+            }
+
+            if (Array.isArray(data.playlists) && data.playlists.length > 0) {
+                await prisma.playlist.createMany({
+                    data: data.playlists.map((playlist: any) => ({
+                        id: playlist.id,
+                        name: playlist.name,
+                    })),
+                    skipDuplicates: true,
+                });
+
+                const playlistTracks = data.playlists.flatMap((playlist: any) =>
+                    (playlist.tracks ?? []).map((playlistTrack: any, idx: number) => ({
+                        playlistId: playlist.id,
+                        trackId: playlistTrack.trackId,
+                        order: idx,
+                    }))
+                );
+
+                if (playlistTracks.length > 0) {
+                    await prisma.playlistTrack.createMany({
+                        data: playlistTracks,
+                        skipDuplicates: true,
+                    });
+                }
+            }
+
+            if (Array.isArray(data.recordings) && data.recordings.length > 0) {
+                await prisma.recording.createMany({
+                    data: data.recordings.map((recording: any) => ({
+                        id: recording.id,
+                        title: recording.title,
+                        duration: Number(recording.duration ?? 0),
+                        filePath: recording.filePath,
+                        dateRecorded: recording.dateRecorded ? new Date(recording.dateRecorded) : new Date(),
+                    })),
+                    skipDuplicates: true,
+                });
+            }
+        }
+
+        fs.renameSync(dbFile, `${dbFile}.bak`);
+        console.log('[Electron Main] Migration successful.');
+    } catch (err) {
+        console.error('[Electron Main] Migration failed:', err);
+    }
+}
+
+function registerIpcHandlers(uploadsDir: string) {
+    if (handlersRegistered) {
+        return;
+    }
+
+    handlersRegistered = true;
 
     ipcMain.handle('library:getTracks', async () => {
-        return trackQueries.getAll.all();
+        return prisma.track.findMany({
+            include: { cuePoints: true },
+            orderBy: { dateAdded: 'desc' },
+        });
+    });
+
+    ipcMain.handle('library:getTrackById', async (_event, id: string) => {
+        return prisma.track.findUnique({
+            where: { id },
+            include: { cuePoints: true },
+        });
+    });
+
+    ipcMain.handle('library:readTrackFile', async (_event, filePath: string) => {
+        return new Uint8Array(fs.readFileSync(filePath));
     });
 
     ipcMain.handle('library:saveTrack', async (_event, track) => {
-        trackQueries.insert.run(track);
-        return track;
+        const created = await prisma.track.create({
+            data: toTrackCreateData(track),
+            include: { cuePoints: true },
+        });
+        return created;
     });
 
-    ipcMain.handle('library:updateTrack', async (_event, id, updates) => {
-        const current = trackQueries.getById.get(id) as any;
-        if (current) {
-            const updated = { ...current, ...updates };
-            trackQueries.update.run(updated);
-            return updated;
-        }
-        throw new Error('Track not found');
+    ipcMain.handle('library:updateTrack', async (_event, id: string, updates: any) => {
+        return prisma.track.update({
+            where: { id },
+            data: toTrackUpdateData(updates),
+            include: { cuePoints: true },
+        });
     });
 
     ipcMain.handle('library:getPlaylists', async () => {
-        const playlists = playlistQueries.getAll.all() as any[];
-        return playlists.map(pl => ({
-            ...pl,
-            tracks: playlistQueries.getTracksForPlaylist.all(pl.id)
-        }));
-    });
-
-    ipcMain.handle('library:savePlaylist', async (_event, name, id) => {
-        const pl = { id: id || `pl_${Date.now()}`, name };
-        playlistQueries.insert.run(pl);
-        return { ...pl, tracks: [] };
-    });
-
-    ipcMain.handle('library:addTracksToPlaylist', async (_event, playlistId, trackIds) => {
-        trackIds.forEach((trackId: string, idx: number) => {
-            playlistQueries.addTrack.run({ playlistId, trackId, position: idx });
+        return prisma.playlist.findMany({
+            include: {
+                tracks: {
+                    orderBy: { order: 'asc' },
+                },
+            },
+            orderBy: { createdAt: 'asc' },
         });
+    });
+
+    ipcMain.handle('library:savePlaylist', async (_event, name: string, id?: string) => {
+        return prisma.playlist.create({
+            data: {
+                ...(id ? { id } : {}),
+                name,
+            },
+            include: {
+                tracks: {
+                    orderBy: { order: 'asc' },
+                },
+            },
+        });
+    });
+
+    ipcMain.handle('library:addTracksToPlaylist', async (_event, playlistId: string, trackIds: string[]) => {
+        const existing = await prisma.playlistTrack.findMany({
+            where: { playlistId },
+            orderBy: { order: 'asc' },
+        });
+
+        const seen = new Set(existing.map((track) => track.trackId));
+        const nextOrder = existing.length;
+        const additions = trackIds
+            .filter((trackId) => !seen.has(trackId))
+            .map((trackId, idx) => ({
+                playlistId,
+                trackId,
+                order: nextOrder + idx,
+            }));
+
+        if (additions.length > 0) {
+            await prisma.playlistTrack.createMany({ data: additions });
+        }
+
         return { success: true };
     });
 
-    ipcMain.handle('library:deletePlaylist', async (_event, id) => {
-        playlistQueries.delete.run(id);
+    ipcMain.handle('library:deletePlaylist', async (_event, id: string) => {
+        await prisma.playlist.delete({ where: { id } });
         return { success: true };
     });
-
-    // ── AUDIO / DSP HANDLERS ──
 
     ipcMain.handle('audio:analyzeKey', async (_event, filePath: string) => {
         return new Promise((resolve, reject) => {
@@ -77,9 +220,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
             exec(`${keyfinderCmd} "${filePath}"`, (error, stdout) => {
                 if (error) {
-                    console.error("Keyfinder execution error:", error);
-                    return reject(new Error('Key detection failed.'));
+                    console.error('Keyfinder execution error:', error);
+                    reject(new Error('Key detection failed.'));
+                    return;
                 }
+
                 resolve(stdout.trim());
             });
         });
@@ -90,67 +235,120 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         const newFilename = `mix_${Date.now()}_${Math.random().toString(36).substring(7)}${originalExt}`;
         const finalPath = path.join(uploadsDir, newFilename);
 
-        fs.copyFileSync(sourcePath, finalPath);
-        fs.unlinkSync(sourcePath);
+        try {
+            fs.renameSync(sourcePath, finalPath);
+        } catch {
+            fs.copyFileSync(sourcePath, finalPath);
+            const srcStat = fs.statSync(sourcePath);
+            const dstStat = fs.statSync(finalPath);
 
-        const recording = {
-            id: `rec_${Date.now()}`,
-            title: title || `DJ Mix - ${new Date().toLocaleString()}`,
-            duration: duration || 0,
-            filePath: finalPath, // Note: For Electron, we might want absolute paths or a custom protocol
-            dateRecorded: new Date().toISOString()
-        };
+            if (dstStat.size !== srcStat.size) {
+                fs.unlinkSync(finalPath);
+                throw new Error('Recording copy verification failed - source preserved.');
+            }
 
-        recordingQueries.insert.run(recording);
+            fs.unlinkSync(sourcePath);
+        }
+
+        const recording = await prisma.recording.create({
+            data: {
+                id: `rec_${Date.now()}`,
+                title: title || `DJ Mix - ${new Date().toLocaleString()}`,
+                duration: duration || 0,
+                filePath: `/audio/${newFilename}`,
+                dateRecorded: new Date(),
+            },
+        });
+
         return recording;
     });
 
     ipcMain.handle('library:getRecordings', async () => {
-        return recordingQueries.getAll.all();
+        return prisma.recording.findMany({
+            orderBy: { dateRecorded: 'desc' },
+        });
     });
 
-    // ── DATA MIGRATION ──
-    const dbFile = path.join(userDataPath, 'db.json');
-    if (fs.existsSync(dbFile)) {
-        console.log("[Electron Main] Found legacy db.json. Migrating...");
+    ipcMain.handle('stems:separate', async (_event, filePath: string) => {
+        console.log('[Electron] Starting stem separation for:', filePath);
+
+        const ctx = new AudioContext({ sampleRate: 44100 });
+
         try {
-            const data = JSON.parse(fs.readFileSync(dbFile, 'utf-8'));
-            if (trackQueries.getAll.all().length === 0) {
-                data.tracks.forEach((t: any) => trackQueries.insert.run(t));
-                data.playlists.forEach((p: any) => {
-                    playlistQueries.insert.run({ id: p.id, name: p.name });
-                    p.tracks.forEach((pt: any, idx: number) => {
-                        playlistQueries.addTrack.run({ playlistId: p.id, trackId: pt.trackId, position: idx });
-                    });
-                });
-                if (data.recordings) {
-                    data.recordings.forEach((r: any) => recordingQueries.insert.run(r));
-                }
-                console.log("[Electron Main] Migration successful.");
-            }
-            fs.renameSync(dbFile, `${dbFile}.bak`);
-        } catch (err) {
-            console.error("[Electron Main] Migration failed:", err);
+            const fileBytes = fs.readFileSync(filePath);
+            const arrayBuffer = fileBytes.buffer.slice(
+                fileBytes.byteOffset,
+                fileBytes.byteOffset + fileBytes.byteLength
+            ) as ArrayBuffer;
+
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            const left = audioBuffer.getChannelData(0);
+            const right = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : left;
+            const stems = await separateStems(left, right, audioBuffer.sampleRate);
+
+            return {
+                drums: Array.from(stems.drums),
+                bass: Array.from(stems.bass),
+                other: Array.from(stems.other),
+                vocals: Array.from(stems.vocals),
+                sampleRate: stems.sampleRate,
+            };
+        } finally {
+            await ctx.close();
         }
+    });
+
+    ipcMain.handle('app:getUploadsDir', () => uploadsDir);
+}
+
+export function setupIpcHandlers(mainWindow: BrowserWindow): () => void {
+    const userDataPath = app.getPath('userData');
+    const uploadsDir = path.join(userDataPath, 'uploads');
+
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    // ── PROLINK HARDWARE INTEGRATION ──
+    registerIpcHandlers(uploadsDir);
+
+    const dbFile = path.join(userDataPath, 'db.json');
+    void migrateLegacyJson(dbFile);
+
+    const safeSend = (channel: string, payload: any) => {
+        if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(channel, payload);
+        }
+    };
+
+    let prolinkCleanup: (() => void) | null = null;
+    let cleanedUp = false;
+
+    const cleanup = () => {
+        if (cleanedUp) {
+            return;
+        }
+
+        cleanedUp = true;
+        prolinkCleanup?.();
+        prolinkCleanup = null;
+    };
+
     const initProlink = async () => {
         try {
             const prolink = await import('prolink-connect');
             const network = await prolink.bringOnline();
-            console.log("[Electron Main] ProLink network online.");
+            console.log('[Electron Main] ProLink network online.');
 
-            network.deviceManager.on('connected', (device: any) => {
-                mainWindow.webContents.send('prolink:device', { type: 'DEVICE_ADDED', device });
-            });
-            network.deviceManager.on('disconnected', (device: any) => {
-                mainWindow.webContents.send('prolink:device', { type: 'DEVICE_REMOVED', device });
-            });
-            network.statusEmitter?.on('status', (state: any) => {
+            const onConnected = (device: any) => {
+                safeSend('prolink:device', { type: 'DEVICE_ADDED', device });
+            };
+            const onDisconnected = (device: any) => {
+                safeSend('prolink:device', { type: 'DEVICE_REMOVED', device });
+            };
+            const onStatus = (state: any) => {
                 const isPlaying = state.playState === 3 || state.playState === 4;
                 const bpm = state.trackBPM || 120;
-                mainWindow.webContents.send('prolink:status', {
+                safeSend('prolink:status', {
                     deviceId: state.deviceId,
                     trackId: state.trackId,
                     isPlaying,
@@ -159,14 +357,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
                     effectiveTempo: bpm * (1 + state.sliderPitch),
                     beat: state.beat,
                 });
-            });
+            };
+
+            network.deviceManager.on('connected', onConnected);
+            network.deviceManager.on('disconnected', onDisconnected);
+            network.statusEmitter?.on('status', onStatus);
+
+            prolinkCleanup = () => {
+                network.deviceManager.off('connected', onConnected);
+                network.deviceManager.off('disconnected', onDisconnected);
+                network.statusEmitter?.off('status', onStatus);
+            };
         } catch (err) {
-            console.warn("[Electron Main] ProLink hardware integration failed:", err);
+            console.warn('[Electron Main] ProLink hardware integration failed:', err);
         }
     };
 
-    initProlink();
+    void initProlink();
+    mainWindow.once('closed', cleanup);
 
-    // ── APP HANDLERS ──
-    ipcMain.handle('app:getUploadsDir', () => uploadsDir);
+    return cleanup;
 }

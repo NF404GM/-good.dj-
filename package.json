@@ -13,7 +13,7 @@
         "backend": "npx tsx server/index.ts",
         "build": "vite build",
         "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:prolink-connect --external:ws --external:express --external:multer --external:cors --outfile=server-dist/index.js",
-        "build:electron": "esbuild electron/main.ts --bundle --platform=node --format=cjs --outfile=electron-dist/main.js && esbuild electron/preload.ts --bundle --platform=node --format=cjs --outfile=electron-dist/preload.js && esbuild electron/license.ts --bundle --platform=node --format=cjs --outfile=electron-dist/license.js",
+        "build:electron": "node scripts/build-electron.mjs",
         "electron:dev": "cross-env NODE_ENV=development concurrently \"npm run dev\" \"wait-on tcp:5173 && electron -r tsx/register electron/main.ts\"",
         "electron:build": "npm run build && npm run build:server && npm run build:electron && electron-builder",
         "preview": "vite preview",
@@ -38,6 +38,13 @@
         "asarUnpack": [
             "bin/**/*.exe"
         ],
+        "extraResources": [
+            {
+                "from": "resources/models",
+                "to": "models"
+            }
+        ],
+        "npmRebuild": true,
         "directories": {
             "buildResources": "assets",
             "output": "release"
@@ -67,14 +74,17 @@
         }
     },
     "dependencies": {
-        "@prisma/client": "^6.2.1",
+        "@prisma/client": "6.19.2",
         "cors": "^2.8.6",
         "essentia.js": "^0.1.3",
         "express": "^5.2.1",
         "framer-motion": "^12.35.0",
         "immer": "^11.1.4",
         "multer": "^2.1.1",
+        "node-web-audio-api": "^1.0.7",
+        "onnxruntime-node": "^1.23.2",
         "p-queue": "^9.1.0",
+        "prolink-connect": "^0.11.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "signalsmith-stretch": "^1.3.2",
@@ -100,8 +110,7 @@
         "eslint": "^9.22.0",
         "eslint-plugin-react-hooks": "^5.2.0",
         "jsdom": "^28.1.0",
-        "prisma": "^6.2.1",
-        "prolink-connect": "^0.11.0",
+        "prisma": "6.19.2",
         "ts-node": "^10.9.2",
         "tsx": "^4.21.0",
         "typescript": "~5.8.2",

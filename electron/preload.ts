@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('gooddj', {
     // Library
     library: {
         getTracks: () => ipcRenderer.invoke('library:getTracks'),
+        getTrackById: (id: string) => ipcRenderer.invoke('library:getTrackById', id),
+        readTrackFile: (filePath: string) => ipcRenderer.invoke('library:readTrackFile', filePath),
         saveTrack: (track: any) => ipcRenderer.invoke('library:saveTrack', track),
         updateTrack: (id: string, updates: any) => ipcRenderer.invoke('library:updateTrack', id, updates),
         getPlaylists: () => ipcRenderer.invoke('library:getPlaylists'),
@@ -28,11 +30,22 @@ contextBridge.exposeInMainWorld('gooddj', {
         analyzeKey: (filePath: string) => ipcRenderer.invoke('audio:analyzeKey', filePath),
         saveRecording: (path: string, title: string, duration: number) => ipcRenderer.invoke('audio:saveRecording', path, title, duration),
     },
+    stems: {
+        separate: (filePath: string) => ipcRenderer.invoke('stems:separate', filePath),
+    },
     // App info
     getVersion: () => ipcRenderer.invoke('app:version'),
     getUploadsDir: () => ipcRenderer.invoke('app:getUploadsDir'),
     platform: process.platform,
     // Event listeners
-    onPlayerStatus: (callback: (state: any) => void) => ipcRenderer.on('prolink:status', (_event, state) => callback(state)),
-    onDeviceUpdate: (callback: (data: { type: string, device: any }) => void) => ipcRenderer.on('prolink:device', (_event, data) => callback(data)),
+    onPlayerStatus: (callback: (state: any) => void) => {
+        const handler = (_event: any, state: any) => callback(state);
+        ipcRenderer.on('prolink:status', handler);
+        return () => ipcRenderer.removeListener('prolink:status', handler);
+    },
+    onDeviceUpdate: (callback: (data: { type: string, device: any }) => void) => {
+        const handler = (_event: any, data: any) => callback(data);
+        ipcRenderer.on('prolink:device', handler);
+        return () => ipcRenderer.removeListener('prolink:device', handler);
+    },
 });

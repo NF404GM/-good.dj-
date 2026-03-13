@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MidiService } from '../services/midi';
+import { MidiService } from '../src/services/midi';
 
 describe('MidiService hot-plug handling', () => {
   it('binds new input devices on connect and clears handlers on disconnect', async () => {

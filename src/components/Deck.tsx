@@ -20,9 +20,9 @@ const CUE_COLORS = [
 ];
 
 // --- ANIMATION CONSTANTS (Physical Springs) ---
-const SPRING_SNAPPY = { type: "spring", stiffness: 500, damping: 30, mass: 0.8 };
-const SPRING_BOUNCY = { type: "spring", stiffness: 400, damping: 15, mass: 1 };
-const SPRING_SMOOTH = { type: "spring", stiffness: 300, damping: 25 };
+const SPRING_SNAPPY = { type: 'spring', stiffness: 500, damping: 30, mass: 0.8 } as const;
+const SPRING_BOUNCY = { type: 'spring', stiffness: 400, damping: 15, mass: 1 } as const;
+const SPRING_SMOOTH = { type: 'spring', stiffness: 300, damping: 25 } as const;
 
 // --- TECHNICAL HUD COMPONENTS (good.MATTE) ---
 
@@ -180,7 +180,7 @@ interface DeckProps {
 }
 
 export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) => {
-    const { id, track, hasAudioBuffer, isPlaying, isLoading, progress, pitch, pitchRange, stems, eq, fx, cuePoints, waveformData, level, activeLoop, gridOffset, keyLock, keyShift, isSynced } = deckState;
+    const { id, track, hasAudioBuffer, isPlaying, isLoading, progress, pitch, pitchRange, stems, eq, fx, cuePoints, waveformData, level, activeLoop, gridOffset, keyLock, keyShift, isSynced, stemMode, isSeparatingStems } = deckState;
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = useState(false);
     const [pressTimer, setPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -319,13 +319,14 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     const remainObj = formatTime(duration * (1 - progress));
     const canTransport = !!track && hasAudioBuffer;
 
-    const stemOrder = [StemType.DRUMS, StemType.BASS, StemType.VOCALS, StemType.HARMONIC];
+    const stemOrder = [StemType.LOW, StemType.BASS, StemType.MID, StemType.HIGH];
     const stemConfig = {
-        [StemType.DRUMS]: { label: 'DRUMS', color: 'var(--stem-drums)' },
+        [StemType.LOW]: { label: stemMode === 'real' ? 'DRUMS' : 'LOW', color: 'var(--stem-drums)' },
         [StemType.BASS]: { label: 'BASS', color: 'var(--stem-bass)' },
-        [StemType.VOCALS]: { label: 'VOCALS', color: 'var(--stem-vocals)' },
-        [StemType.HARMONIC]: { label: 'SYNTH', color: 'var(--stem-harmonic)' },
+        [StemType.MID]: { label: stemMode === 'real' ? 'OTHER' : 'MID', color: 'var(--stem-vocals)' },
+        [StemType.HIGH]: { label: stemMode === 'real' ? 'VOCALS' : 'HIGH', color: 'var(--stem-harmonic)' },
     };
+    const canSeparateStems = Boolean(window.gooddj?.stems && track?.filePath);
 
     const LOOP_SIZES = [0.5, 1, 2, 4, 8];
 
@@ -582,7 +583,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                                             return (
                                                 <motion.button
                                                     key={i}
-                                                    whileHover={{ y: -2, brightness: 1.1, scale: 1.02 }}
+                                                    whileHover={{ y: -2, scale: 1.02, filter: 'brightness(1.1)' }}
                                                     whileTap={{ scale: 0.94, y: 1 }}
                                                     transition={SPRING_SNAPPY}
                                                     onMouseDown={(e) => {
@@ -651,28 +652,56 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                             )}
 
                             {padMode === 'STEMS' && (
-                                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={SPRING_SMOOTH} className="h-full flex gap-2">
-                                    {stemOrder.map(type => {
-                                        const sConfig = stemConfig[type];
-                                        const sState = stems[type];
-                                        return (
-                                            <div key={type} className="flex-1 flex flex-col bg-canvas rounded-sm border border-white/5 p-1 relative overflow-hidden shadow-inner">
-                                                <StemControl
-                                                    type={type}
-                                                    volume={sState.volume}
-                                                    param={sState.param}
-                                                    isActive={sState.active}
-                                                    color={sConfig.color}
-                                                    label={sConfig.label}
-                                                    onToggle={() => dispatch({ type: 'TOGGLE_STEM', deckId: id, stem: type })}
-                                                    onVolumeChange={(v) => dispatch({ type: 'SET_VOLUME', deckId: id, stem: type, value: v })}
-                                                    onParamChange={(v) => dispatch({ type: 'SET_STEM_PARAM', deckId: id, stem: type, value: v })}
-                                                    className="w-full h-full border-none bg-transparent p-0"
-                                                    hideValue={true}
-                                                />
-                                            </div>
-                                        );
-                                    })}
+                                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={SPRING_SMOOTH} className="h-full flex flex-col gap-3">
+                                    <div className="flex items-center justify-between gap-3 rounded-sm border border-white/5 bg-black/40 px-3 py-2">
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[8px] font-mono font-black tracking-[0.22em] text-white/80 uppercase">
+                                                {stemMode === 'real' ? 'Stem Separation Ready' : 'Stem Separation'}
+                                            </span>
+                                            <span className="text-[8px] font-mono text-white/30 uppercase tracking-[0.18em]">
+                                                {isSeparatingStems
+                                                    ? 'Analyzing stems... ~15s'
+                                                    : stemMode === 'real'
+                                                        ? 'Real drums / bass / other / vocals loaded'
+                                                        : 'Load proprietary Demucs stems in Electron'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => dispatch({ type: 'SEPARATE_STEMS', deckId: id })}
+                                            disabled={!canSeparateStems || isSeparatingStems || stemMode === 'real'}
+                                            className={`shrink-0 px-3 py-1.5 rounded-xs border text-[8px] font-mono font-black uppercase tracking-[0.18em] transition-all ${
+                                                !canSeparateStems || isSeparatingStems || stemMode === 'real'
+                                                    ? 'border-white/10 text-white/25 bg-white/5 cursor-not-allowed'
+                                                    : 'border-signal-nominal/30 text-signal-nominal bg-signal-nominal/10 hover:bg-signal-nominal/20'
+                                            }`}
+                                        >
+                                            {isSeparatingStems ? 'Working' : stemMode === 'real' ? 'Loaded' : 'Separate'}
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 flex gap-2">
+                                        {stemOrder.map(type => {
+                                            const sConfig = stemConfig[type];
+                                            const sState = stems[type];
+                                            return (
+                                                <div key={type} className="flex-1 flex flex-col bg-canvas rounded-sm border border-white/5 p-1 relative overflow-hidden shadow-inner">
+                                                    <StemControl
+                                                        type={type}
+                                                        volume={sState.volume}
+                                                        param={sState.param}
+                                                        isActive={sState.active}
+                                                        color={sConfig.color}
+                                                        label={sConfig.label}
+                                                        onToggle={() => dispatch({ type: 'TOGGLE_STEM', deckId: id, stem: type })}
+                                                        onVolumeChange={(v) => dispatch({ type: 'SET_VOLUME', deckId: id, stem: type, value: v })}
+                                                        onParamChange={(v) => dispatch({ type: 'SET_STEM_PARAM', deckId: id, stem: type, value: v })}
+                                                        className="w-full h-full border-none bg-transparent p-0"
+                                                        hideValue={true}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </motion.div>
                             )}
 
@@ -687,7 +716,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                                         {[1, 4, 8, 16].map((beats) => (
                                             <motion.button
                                                 key={beats}
-                                                whileHover={{ y: -1, brightness: 1.1 }}
+                                                whileHover={{ y: -1, filter: 'brightness(1.1)' }}
                                                 whileTap={{ scale: 0.95 }}
                                                 transition={SPRING_SNAPPY}
                                                 onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats: activeLoop === beats ? null : beats })}
@@ -732,7 +761,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                             <div className="flex items-end gap-6 h-24">
                                 {/* CUE */}
                                 <motion.button
-                                    whileHover={{ y: -2, brightness: 1.1 }}
+                                    whileHover={{ y: -2, filter: 'brightness(1.1)' }}
                                     whileTap={{ scale: 0.94, y: 1 }}
                                     transition={SPRING_SNAPPY}
                                     className={`relative flex-1 max-w-[140px] h-full rounded-sm border-t border-white/10 bg-[#1e1e1e] shadow-[0_5px_0_#000,0_10px_24px_rgba(0,0,0,0.8)] flex flex-col items-center justify-center transition-all ${!canTransport ? 'opacity-10 pointer-events-none' : ''}`}
@@ -745,7 +774,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
  
                                 {/* PLAY (Dominant Center) */}
                                 <motion.button
-                                    whileHover={{ y: -3, brightness: 1.05 }}
+                                    whileHover={{ y: -3, filter: 'brightness(1.05)' }}
                                     whileTap={{ scale: 0.96, y: 2 }}
                                     transition={SPRING_BOUNCY}
                                     className={`relative flex-[2] h-full rounded-sm border-t transition-all duration-400 flex flex-col items-center justify-center group overflow-hidden
@@ -768,7 +797,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
  
                                 {/* SYNC */}
                                 <motion.button
-                                    whileHover={{ y: -2, brightness: 1.1 }}
+                                    whileHover={{ y: -2, filter: 'brightness(1.1)' }}
                                     whileTap={{ scale: 0.94, y: 1 }}
                                     transition={SPRING_SNAPPY}
                                     className={`relative flex-1 max-w-[140px] h-full rounded-sm border-t border-white/10 bg-[#1e1e1e] shadow-[0_5px_0_#000,0_10px_24px_rgba(0,0,0,0.8)] flex flex-col items-center justify-center transition-all ${!canTransport ? 'opacity-10 pointer-events-none' : ''}`}

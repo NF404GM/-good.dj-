@@ -8,10 +8,13 @@ import { CentralMixer } from './components/CentralMixer';
 import { BootSequence } from './components/BootSequence';
 import { useProLink } from './hooks/useProLink';
 import { ActivationGate } from './components/ActivationGate';
+import { SHOW_ARCHITECTURE_VIEW } from './services/config';
 
 // --- LAZY LOADED VIEWS (Code Splitting) ---
 const LibraryView = lazy(() => import('./components/LibraryView').then(module => ({ default: module.LibraryView })));
-const ArchitectureView = lazy(() => import('./components/ArchitectureView').then(module => ({ default: module.ArchitectureView })));
+const ArchitectureView = SHOW_ARCHITECTURE_VIEW
+    ? lazy(() => import('./components/ArchitectureView').then(module => ({ default: module.ArchitectureView })))
+    : null;
 
 // --- LAYOUT COMPONENT (Persistent Shell) ---
 const RootLayout: React.FC<{
@@ -243,7 +246,7 @@ function AppContent() {
                     </div>
 
                     {/* ARCHITECTURE PAGE */}
-                    {currentView === AppView.ARCHITECTURE && (
+                    {SHOW_ARCHITECTURE_VIEW && ArchitectureView && currentView === AppView.ARCHITECTURE && (
                         <div className="absolute inset-0 p-4 bg-canvas z-20">
                             <ArchitectureView />
                         </div>

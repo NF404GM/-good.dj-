@@ -59,15 +59,15 @@ export class EffectsEngine {
 
     private generateImpulseResponse(duration: number, decay: number): AudioBuffer {
         const sampleRate = this.ctx.sampleRate;
-        const length = sampleRate * duration;
+        const length = Math.floor(sampleRate * duration);
         const impulse = this.ctx.createBuffer(2, length, sampleRate);
         const left = impulse.getChannelData(0);
         const right = impulse.getChannelData(1);
 
         for (let i = 0; i < length; i++) {
-            const n = length - i;
-            left[i] = (Math.random() * 2 - 1) * Math.pow(n / length, decay);
-            right[i] = (Math.random() * 2 - 1) * Math.pow(n / length, decay);
+            const factor = Math.pow(1 - i / length, decay);
+            left[i] = (Math.random() * 2 - 1) * factor;
+            right[i] = (Math.random() * 2 - 1) * factor;
         }
         return impulse;
     }

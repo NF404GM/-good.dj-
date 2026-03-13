@@ -18,6 +18,10 @@ export interface TrackAnalysisResult {
     keyConfidence: number;
 }
 
+interface AnalyzeTrackOptions {
+    mode?: 'direct' | 'worker';
+}
+
 let essentiaInstance: any = null;
 let initPromise: Promise<any> | null = null;
 
@@ -307,9 +311,8 @@ const pendingAnalyses: Map<string, (result: TrackAnalysisResult) => void> = new 
 /** Initialize the Analysis Worker (Singleton). */
 function ensureWorker(): Worker {
     if (worker) return worker;
-    
-    // Using simple URL for the worker in dev, will be updated for Electron
-    worker = new Worker(new URL('./analysis.worker.js', import.meta.url));
+
+    worker = new Worker(new URL('./analysis.worker.ts', import.meta.url), { type: 'module' });
 
     worker.onmessage = (e) => {
         const { id, success, bpm, key, scale, beats, error } = e.data;
@@ -334,13 +337,56 @@ function ensureWorker(): Worker {
     return worker;
 }
 
+async function analyzeTrackDirect(buffer: AudioBuffer): Promise<TrackAnalysisResult> {
+    const essentia = await ensureEssentia();
+    const monoSignal = audioBufferToMono(buffer);
+    const vectorSignal = essentia.arrayToVector(monoSignal);
+
+    try {
+        const bpm = estimateBPM(essentia, vectorSignal);
+        const beats = detectBeats(essentia, vectorSignal);
+        const keyResult = estimateKey(essentia, vectorSignal, buffer.sampleRate);
+
+        return {
+            bpm,
+            key: toCamelotKey(keyResult.key, keyResult.scale),
+            scale: keyResult.scale,
+            beats,
+            keyConfidence: keyResult.strength
+        };
+    } finally {
+        vectorSignal.delete();
+    }
+}
+
+async function analyzeTrackInWorker(buffer: AudioBuffer, nativeKey: string | null): Promise<TrackAnalysisResult> {
+    const analysisId = `analysis-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const analysisWorker = ensureWorker();
+    const monoSignal = audioBufferToMono(buffer);
+
+    return new Promise((resolve) => {
+        pendingAnalyses.set(analysisId, (res) => {
+            if (nativeKey) {
+                res.key = nativeKey;
+            }
+            resolve(res);
+        });
+
+        console.log(`[TrackAnalyzer] Queueing analysis in worker: ${analysisId}`);
+        analysisWorker.postMessage({
+            id: analysisId,
+            sampleRate: buffer.sampleRate,
+            audioData: monoSignal.buffer
+        }, [monoSignal.buffer]);
+    });
+}
+
 /**
  * Analyze a loaded AudioBuffer and return BPM and Key.
  * Limiting to 1 concurrent analysis via p-queue.
  */
-export async function analyzeTrack(buffer: AudioBuffer, filePath?: string): Promise<TrackAnalysisResult> {
+export async function analyzeTrack(buffer: AudioBuffer, filePath?: string, options?: AnalyzeTrackOptions): Promise<TrackAnalysisResult> {
     return queue.add(async () => {
-        // --- NATIVE KEY ANALYSIS (ELECTRON ONLY) ---
         let nativeKey: string | null = null;
         if (window.gooddj && filePath) {
             try {
@@ -352,24 +398,14 @@ export async function analyzeTrack(buffer: AudioBuffer, filePath?: string): Prom
             }
         }
 
-        const analysisId = `analysis-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const analysisWorker = ensureWorker();
-        const monoSignal = audioBufferToMono(buffer);
+        if (options?.mode === 'worker') {
+            return analyzeTrackInWorker(buffer, nativeKey);
+        }
 
-        return new Promise((resolve) => {
-            pendingAnalyses.set(analysisId, (res) => {
-                // If we got a native key, override the Essentia key result
-                if (nativeKey) {
-                    res.key = nativeKey;
-                }
-                resolve(res);
-            });
-            console.log(`[TrackAnalyzer] Queueing analysis in worker: ${analysisId}`);
-            analysisWorker.postMessage({
-                id: analysisId,
-                sampleRate: buffer.sampleRate,
-                audioData: monoSignal.buffer
-            }, [monoSignal.buffer]); 
-        });
+        const result = await analyzeTrackDirect(buffer);
+        if (nativeKey) {
+            result.key = nativeKey;
+        }
+        return result;
     }) as Promise<TrackAnalysisResult>;
 }

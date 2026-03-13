@@ -39,9 +39,9 @@
   --radius-lg: 8px;
 
   /* ── ANIMATION TOKENS (§12) ── */
-  --spring-snappy:   { "type": "spring", "stiffness": 500, "damping": 30 };
-  --spring-bouncy:   { "type": "spring", "stiffness": 400, "damping": 15 };
-  --spring-lofi:     { "type": "spring", "stiffness": 260, "damping": 20 };
+  --spring-snappy:   cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring-bouncy:   cubic-bezier(0.18, 0.88, 0.28, 1.12);
+  --spring-lofi:     cubic-bezier(0.25, 0.72, 0.3, 1);
   
   --transition-ui:   200ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);

@@ -1,6 +1,17 @@
 import { LibraryTrack, Playlist } from '../types';
+import { API_BASE, SERVER_BASE } from './config';
 
-const API_BASE = 'http://127.0.0.1:3003/api';
+function isAbsoluteTrackPath(filePath?: string) {
+    return Boolean(filePath && /^([A-Z]:\\|\/)/i.test(filePath));
+}
+
+function normalizeTrack(track: any): LibraryTrack {
+    return {
+        ...track,
+        beats: track.beatsJson ? JSON.parse(track.beatsJson) : undefined,
+        storageKey: track.id
+    };
+}
 
 export class LibraryService {
     private inMemoryRekordbox: Record<string, any> = {};
@@ -8,14 +19,12 @@ export class LibraryService {
     constructor() { }
 
     public async init(): Promise<void> {
-        // No local DB init required anymore, we use the REST API
         return Promise.resolve();
     }
 
     public async saveTrack(track: LibraryTrack, file?: File): Promise<void> {
         if (window.gooddj) {
             if (file) {
-                // In Electron, we can use the native path
                 const filePath = (file as any).path;
                 if (filePath) {
                     await window.gooddj.library.saveTrack({ ...track, filePath });
@@ -44,15 +53,15 @@ export class LibraryService {
                 method: 'POST',
                 body: formData,
             });
-        } else {
-            // Update metadata
-            const { fileBlob, ...metadata } = track;
-            await fetch(`${API_BASE}/tracks/${track.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(metadata)
-            });
+            return;
         }
+
+        const { fileBlob, ...metadata } = track;
+        await fetch(`${API_BASE}/tracks/${track.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata)
+        });
     }
 
     public async setTrackRating(trackId: string, rating: number): Promise<void> {
@@ -66,53 +75,76 @@ export class LibraryService {
     public async getAllTracks(): Promise<LibraryTrack[]> {
         if (window.gooddj) {
             const data = await window.gooddj.library.getTracks();
-            return data.map((t: any) => ({
-                ...t,
-                beats: t.beatsJson ? JSON.parse(t.beatsJson) : undefined,
-                storageKey: t.id
-            }));
+            return data.map((track: any) => normalizeTrack(track));
         }
 
-        console.log(`[good.dj INFO] Fetching tracks from ${API_BASE}/tracks`);
         try {
             const res = await fetch(`${API_BASE}/tracks`);
             if (!res.ok) {
-                console.warn(`[good.dj WARN] Server returned not-ok: ${res.status}`);
                 return [];
             }
+
             const data = await res.json();
-            console.log(`[good.dj INFO] Successfully loaded ${data.length} tracks`);
-            return data.map((t: any) => ({
-                ...t,
-                beats: t.beatsJson ? JSON.parse(t.beatsJson) : undefined,
-                storageKey: t.id // Map ID to storageKey for legacy compatibility
-            }));
+            return data.map((track: any) => normalizeTrack(track));
         } catch (e) {
-            console.error(`[good.dj ERROR] Could not connect to API server:`, e);
+            console.error('[good.dj] Could not connect to API server:', e);
             return [];
         }
     }
 
+    public async getTrackById(id: string): Promise<LibraryTrack | null> {
+        if (window.gooddj) {
+            const track = await window.gooddj.library.getTrackById(id);
+            return track ? normalizeTrack(track) : null;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/tracks/${id}`);
+            if (!res.ok) {
+                return null;
+            }
+
+            return normalizeTrack(await res.json());
+        } catch {
+            return null;
+        }
+    }
+
     public getTrackUrl(track: LibraryTrack): string {
-        // Now returns the route pointing to our proxy API
-        const url = `http://127.0.0.1:3003${track.filePath}`;
-        return url;
+        if (window.gooddj && isAbsoluteTrackPath(track.filePath)) {
+            return `file:///${track.filePath!.replace(/\\/g, '/').replace(/^\//, '')}`;
+        }
+
+        const safePath = track.filePath?.startsWith('/') ? track.filePath : `/${track.filePath ?? ''}`;
+        return `${SERVER_BASE}${safePath}`;
     }
 
     public async getTrackBlob(id: string): Promise<Blob | null> {
-        // We need the filePath. Since we only have the ID here, we fetch track metadata first
-        const tracks = await this.getAllTracks();
-        const track: any = tracks.find(t => t.id === id);
+        const track = await this.getTrackById(id);
+        if (!track || !track.filePath) {
+            return null;
+        }
 
-        if (!track || !track.filePath) return null;
+        if (window.gooddj && isAbsoluteTrackPath(track.filePath)) {
+            try {
+                const bytes = await window.gooddj.library.readTrackFile(track.filePath);
+                return new Blob([bytes]);
+            } catch (e) {
+                console.error('[good.dj] Failed to read local track file:', e);
+                return null;
+            }
+        }
 
-        const url = this.getTrackUrl(track); // Use the new helper
+        const url = this.getTrackUrl(track);
         try {
             const res = await fetch(url);
-            if (!res.ok) return null;
+            if (!res.ok) {
+                return null;
+            }
+
             return await res.blob();
         } catch (e) {
-            console.error("Failed to fetch track audio blob from server:", e);
+            console.error('Failed to fetch track blob:', e);
             return null;
         }
     }
@@ -136,7 +168,7 @@ export class LibraryService {
         return {
             id: data.id,
             name: data.name,
-            trackIds: [] // freshly created
+            trackIds: []
         };
     }
 
@@ -145,26 +177,30 @@ export class LibraryService {
             await window.gooddj.library.deletePlaylist(id);
             return;
         }
+
         await fetch(`${API_BASE}/playlists/${id}`, { method: 'DELETE' });
     }
 
     public async getAllPlaylists(): Promise<Playlist[]> {
         if (window.gooddj) {
             const playlists = await window.gooddj.library.getPlaylists();
-            return playlists.map((pl: any) => ({
-                id: pl.id,
-                name: pl.name,
-                trackIds: pl.tracks.map((pt: any) => pt.trackId)
+            return playlists.map((playlist: any) => ({
+                id: playlist.id,
+                name: playlist.name,
+                trackIds: playlist.tracks.map((track: any) => track.trackId)
             }));
         }
 
         const res = await fetch(`${API_BASE}/playlists`);
-        if (!res.ok) return [];
+        if (!res.ok) {
+            return [];
+        }
+
         const playlists = await res.json();
-        return playlists.map((pl: any) => ({
-            id: pl.id,
-            name: pl.name,
-            trackIds: pl.tracks.map((pt: any) => pt.trackId)
+        return playlists.map((playlist: any) => ({
+            id: playlist.id,
+            name: playlist.name,
+            trackIds: playlist.tracks.map((track: any) => track.trackId)
         }));
     }
 
@@ -177,14 +213,13 @@ export class LibraryService {
             await window.gooddj.library.addTracksToPlaylist(playlistId, trackIds);
             return;
         }
+
         await fetch(`${API_BASE}/playlists/${playlistId}/tracks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ trackIds })
         });
     }
-
-    // --- REKORDBOX CACHE (Keep in memory for transient sessions) ---
 
     public async saveRekordboxCache(entries: Record<string, any>): Promise<void> {
         this.inMemoryRekordbox = { ...this.inMemoryRekordbox, ...entries };

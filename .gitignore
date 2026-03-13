@@ -3,6 +3,9 @@ uploads/
 temp_uploads/
 db.json
 *.bak
+*.json.bak
+migrated_prompt_history/
+tmp/
 prisma/dev.db
 prisma/dev.db-journal
 
@@ -16,6 +19,8 @@ prisma/dev.db-journal
 # Logs
 logs
 *.log
+lint_output*.txt
+tsc_output*.txt
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*

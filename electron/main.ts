@@ -8,12 +8,22 @@ import { setupIpcHandlers } from './ipcHandlers.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ── CONFIGURATION ──
-// Replace this with your actual Gumroad product ID after creating the product
-const GUMROAD_PRODUCT_ID = 'YOUR_PRODUCT_ID_HERE';
+function safeLoadEnvFile(filename: string) {
+    try {
+        process.loadEnvFile(filename);
+    } catch {
+        // Local env files are optional in development.
+    }
+}
+
+safeLoadEnvFile('.env.local');
+safeLoadEnvFile('.env');
+
+const GUMROAD_PRODUCT_ID = process.env.VITE_GUMROAD_PRODUCT_ID ?? '';
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
+let cleanupIpcHandlers: (() => void) | null = null;
 
 function getUserDataPath(): string {
     return app.getPath('userData');
@@ -28,7 +38,7 @@ function createWindow(): void {
         title: 'good.DJ',
         titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
         icon: path.join(__dirname, '../assets/icon.png'),
-        show: false, // Don't show until ready
+        show: false,
         backgroundColor: '#0f0f0f',
         webPreferences: {
             nodeIntegration: false,
@@ -44,17 +54,21 @@ function createWindow(): void {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
 
-    // Smooth reveal once content is ready
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
     });
 
+    cleanupIpcHandlers?.();
+    cleanupIpcHandlers = setupIpcHandlers(mainWindow);
+
     mainWindow.on('closed', () => {
+        cleanupIpcHandlers?.();
+        cleanupIpcHandlers = null;
         mainWindow = null;
     });
 }
 
-function startBackend(): void {
+async function startBackend(): Promise<void> {
     const userDataPath = getUserDataPath();
     console.log(`[Electron] Starting backend, USER_DATA_PATH=${userDataPath}`);
 
@@ -65,20 +79,13 @@ function startBackend(): void {
             stdio: 'inherit',
             shell: true
         });
-    } else {
-        serverProcess = spawn(process.execPath, [path.join(__dirname, '../server-dist/index.js')], {
-            env: {
-                ...process.env,
-                USER_DATA_PATH: userDataPath,
-                ELECTRON_RUN_AS_NODE: '1'
-            },
-            stdio: 'inherit',
-            shell: false
-        });
+        return;
     }
-}
 
-// ── LICENSE IPC HANDLERS ──
+    process.env.USER_DATA_PATH = userDataPath;
+    const { startServer } = await import('../server-dist/index.js');
+    await startServer();
+}
 
 function setupLicenseIPC(): void {
     const userDataPath = getUserDataPath();
@@ -94,7 +101,6 @@ function setupLicenseIPC(): void {
             return { activated: false };
         }
 
-        // Check if re-validation is needed
         if (needsRevalidation(cached)) {
             const result = await verifyLicense(cached.key, GUMROAD_PRODUCT_ID, userDataPath);
             if (!result.success) {
@@ -119,13 +125,10 @@ function setupLicenseIPC(): void {
     });
 }
 
-// ── APP LIFECYCLE ──
-
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     setupLicenseIPC();
-    startBackend();
+    await startBackend();
     createWindow();
-    if (mainWindow) setupIpcHandlers(mainWindow);
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -141,7 +144,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    cleanupIpcHandlers?.();
+    cleanupIpcHandlers = null;
+
     if (serverProcess) {
         serverProcess.kill();
+        serverProcess = null;
     }
 });
