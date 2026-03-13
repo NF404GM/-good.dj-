@@ -196,8 +196,9 @@ async function startServer() {
         });
         
         try {
-            const prolink = await import('prolink-connect');
-            const network = await prolink.bringOnline();
+            // @ts-expect-error - prolink-connect may not be present in Serverless environment
+            const { bringOnline } = await import('prolink-connect');
+            const network = await bringOnline();
             network.statusEmitter?.on('status', (state: any) => {
                 const msg = JSON.stringify({
                     type: 'PLAYER_STATUS',
@@ -208,7 +209,9 @@ async function startServer() {
                 });
                 for (const client of clients) if (client.readyState === WebSocket.OPEN) client.send(msg);
             });
-        } catch (e) {}
+        } catch (e) {
+            console.warn("[good.dj] ProLink hardware support not available in this environment.");
+        }
 
         app.listen(HTTP_PORT, '0.0.0.0', () => {
             console.log(`[good.dj] API listening on port ${HTTP_PORT}`);
