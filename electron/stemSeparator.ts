@@ -4,7 +4,7 @@ import fs from 'fs';
 import { app } from 'electron';
 
 const TARGET_SAMPLE_RATE = 44100;
-const DEFAULT_CHUNK_SIZE = TARGET_SAMPLE_RATE * 10;
+const DEFAULT_CHUNK_SIZE = 343980;
 const DEFAULT_STEM_COUNT = 4;
 const MODEL_FILENAMES = ['htdemucs_ft.onnx', 'demucsv4.onnx'] as const;
 const INSTALLED_MODEL_DIRNAME = 'models';
@@ -135,30 +135,34 @@ async function inspectModel(candidate: StemModelCandidate): Promise<StemModelIns
         executionMode: 'sequential',
     });
 
-    const inputName = session.inputNames[0];
-    const outputName = session.outputNames[0];
-    const inputShape = [...(session.inputMetadata[inputName]?.shape ?? [])];
-    const outputShape = [...(session.outputMetadata[outputName]?.shape ?? [])];
-    const chunkSize = getFixedAxis(inputShape, inputShape.length - 1, DEFAULT_CHUNK_SIZE);
-    const stemCount = getFixedAxis(outputShape, 1, DEFAULT_STEM_COUNT);
+    try {
+        const inputName = session.inputNames[0];
+        const outputName = session.outputNames[0];
+        const inputShape = [...(session.inputMetadata[inputName]?.shape ?? [])];
+        const outputShape = [...(session.outputMetadata[outputName]?.shape ?? [])];
+        const chunkSize = getFixedAxis(inputShape, inputShape.length - 1, DEFAULT_CHUNK_SIZE);
+        const stemCount = getFixedAxis(outputShape, 1, DEFAULT_STEM_COUNT);
 
-    if (chunkSize <= 0) {
-        throw new Error('Stem model input shape is missing a valid sample axis.');
+        if (chunkSize <= 0) {
+            throw new Error('Stem model input shape is missing a valid sample axis.');
+        }
+
+        if (stemCount < DEFAULT_STEM_COUNT) {
+            throw new Error(`Stem model only exposes ${stemCount} stems. good.dj requires at least ${DEFAULT_STEM_COUNT}.`);
+        }
+
+        return {
+            candidate,
+            inputName,
+            outputName,
+            inputShape,
+            outputShape,
+            chunkSize,
+            stemCount,
+        };
+    } finally {
+        await session.release();
     }
-
-    if (stemCount < DEFAULT_STEM_COUNT) {
-        throw new Error(`Stem model only exposes ${stemCount} stems. good.dj requires at least ${DEFAULT_STEM_COUNT}.`);
-    }
-
-    return {
-        candidate,
-        inputName,
-        outputName,
-        inputShape,
-        outputShape,
-        chunkSize,
-        stemCount,
-    };
 }
 
 async function getModelRuntime() {
@@ -336,8 +340,11 @@ function resampleChannel(channel: Float32Array, sourceRate: number) {
     const output = new Float32Array(nextLength);
 
     for (let i = 0; i < nextLength; i += 1) {
-        const src = Math.min(Math.round(i / ratio), channel.length - 1);
-        output[i] = channel[src];
+        const src = i / ratio;
+        const lo = Math.floor(src);
+        const hi = Math.min(lo + 1, channel.length - 1);
+        const frac = src - lo;
+        output[i] = channel[lo] * (1 - frac) + channel[hi] * frac;
     }
 
     return output;
@@ -421,7 +428,9 @@ function finalizeOutputs(outputs: Record<RealStemName, Float32Array>, weights: F
 export async function separateStems(
     left: Float32Array,
     right: Float32Array,
-    sampleRate: number
+    sampleRate: number,
+    onProgress?: (completed: number, total: number) => void,
+    signal?: AbortSignal
 ): Promise<StemBuffers> {
     const model = await getModelRuntime();
     const leftChannel = resampleChannel(left, sampleRate);
@@ -455,6 +464,10 @@ export async function separateStems(
         : Math.ceil((totalSamples - model.chunkSize) / step) + 1;
 
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+        if (signal?.aborted) {
+            throw new DOMException('Stem separation aborted', 'AbortError');
+        }
+
         const start = chunkCount === 1
             ? 0
             : Math.min(chunkIndex * step, Math.max(totalSamples - model.chunkSize, 0));
@@ -491,6 +504,8 @@ export async function separateStems(
                 ) * weight;
             }
         }
+
+        onProgress?.(chunkIndex + 1, chunkCount);
     }
 
     finalizeOutputs(outputs, weights, std);

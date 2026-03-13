@@ -319,6 +319,8 @@ export interface GoodDJBridge {
         getStatus: () => Promise<StemModelStatus>;
         installModel: (filePath: string) => Promise<StemModelStatus>;
         removeInstalledModel: () => Promise<StemModelStatus>;
+        abort: () => Promise<{ aborted: true }>;
+        onProgress: (callback: (info: { filePath: string; pct: number }) => void) => () => void;
     };
     getVersion: () => Promise<string>;
     getUploadsDir: () => Promise<string>;

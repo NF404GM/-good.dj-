@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
 
 let handlersRegistered = false;
+let currentStemAbortController: AbortController | null = null;
 
 function toTrackCreateData(track: any) {
     return {
@@ -279,9 +280,12 @@ function registerIpcHandlers(uploadsDir: string) {
         });
     });
 
-    ipcMain.handle('stems:separate', async (_event, filePath: string) => {
+    ipcMain.handle('stems:separate', async (event, filePath: string) => {
         console.log('[Electron] Starting stem separation for:', filePath);
 
+        currentStemAbortController?.abort();
+        const abortController = new AbortController();
+        currentStemAbortController = abortController;
         const ctx = new AudioContext({ sampleRate: 44100 });
 
         try {
@@ -294,7 +298,20 @@ function registerIpcHandlers(uploadsDir: string) {
             const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
             const left = audioBuffer.getChannelData(0);
             const right = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : left;
-            const stems = await separateStems(left, right, audioBuffer.sampleRate);
+            const stems = await separateStems(
+                left,
+                right,
+                audioBuffer.sampleRate,
+                (done, total) => {
+                    if (!event.sender.isDestroyed()) {
+                        event.sender.send('stems:progress', {
+                            filePath,
+                            pct: Math.round((done / total) * 100),
+                        });
+                    }
+                },
+                abortController.signal
+            );
 
             return {
                 drums: stems.drums,
@@ -304,8 +321,16 @@ function registerIpcHandlers(uploadsDir: string) {
                 sampleRate: stems.sampleRate,
             };
         } finally {
+            if (currentStemAbortController === abortController) {
+                currentStemAbortController = null;
+            }
             await ctx.close();
         }
+    });
+
+    ipcMain.handle('stems:abort', async () => {
+        currentStemAbortController?.abort();
+        return { aborted: true };
     });
 
     ipcMain.handle('stems:getStatus', async () => {

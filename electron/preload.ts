@@ -35,6 +35,12 @@ contextBridge.exposeInMainWorld('gooddj', {
         getStatus: () => ipcRenderer.invoke('stems:getStatus'),
         installModel: (filePath: string) => ipcRenderer.invoke('stems:installModel', filePath),
         removeInstalledModel: () => ipcRenderer.invoke('stems:removeInstalledModel'),
+        abort: () => ipcRenderer.invoke('stems:abort'),
+        onProgress: (callback: (info: { filePath: string; pct: number }) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, info: { filePath: string; pct: number }) => callback(info);
+            ipcRenderer.on('stems:progress', handler);
+            return () => ipcRenderer.removeListener('stems:progress', handler);
+        },
     },
     // App info
     getVersion: () => ipcRenderer.invoke('app:version'),
