@@ -38,11 +38,23 @@ export enum StemType {
 export type StemPlaybackMode = 'filters' | 'real';
 
 export interface StemSeparationResult {
-    drums: number[];
-    bass: number[];
-    other: number[];
-    vocals: number[];
+    drums: Float32Array;
+    bass: Float32Array;
+    other: Float32Array;
+    vocals: Float32Array;
     sampleRate: number;
+}
+
+export interface StemModelStatus {
+    available: boolean;
+    source: 'environment' | 'user-installed' | 'bundled' | 'dev-resource' | null;
+    path: string | null;
+    fileName: string | null;
+    inputName: string | null;
+    outputName: string | null;
+    inputShape: Array<string | number | null | undefined>;
+    outputShape: Array<string | number | null | undefined>;
+    message: string;
 }
 
 
@@ -304,6 +316,9 @@ export interface GoodDJBridge {
     audio: BetterAudioAPI;
     stems: {
         separate: (filePath: string) => Promise<StemSeparationResult>;
+        getStatus: () => Promise<StemModelStatus>;
+        installModel: (filePath: string) => Promise<StemModelStatus>;
+        removeInstalledModel: () => Promise<StemModelStatus>;
     };
     getVersion: () => Promise<string>;
     getUploadsDir: () => Promise<string>;
@@ -317,4 +332,3 @@ declare global {
         gooddj?: GoodDJBridge;
     }
 }
-

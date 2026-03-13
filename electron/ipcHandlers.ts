@@ -5,7 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { AudioContext } from 'node-web-audio-api';
-import { separateStems } from './stemSeparator.ts';
+import { separateStems, getStemModelStatus, installStemModel, removeInstalledStemModel } from './stemSeparator.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
@@ -287,15 +287,27 @@ function registerIpcHandlers(uploadsDir: string) {
             const stems = await separateStems(left, right, audioBuffer.sampleRate);
 
             return {
-                drums: Array.from(stems.drums),
-                bass: Array.from(stems.bass),
-                other: Array.from(stems.other),
-                vocals: Array.from(stems.vocals),
+                drums: stems.drums,
+                bass: stems.bass,
+                other: stems.other,
+                vocals: stems.vocals,
                 sampleRate: stems.sampleRate,
             };
         } finally {
             await ctx.close();
         }
+    });
+
+    ipcMain.handle('stems:getStatus', async () => {
+        return getStemModelStatus();
+    });
+
+    ipcMain.handle('stems:installModel', async (_event, sourcePath: string) => {
+        return installStemModel(sourcePath);
+    });
+
+    ipcMain.handle('stems:removeInstalledModel', async () => {
+        return removeInstalledStemModel();
     });
 
     ipcMain.handle('app:getUploadsDir', () => uploadsDir);

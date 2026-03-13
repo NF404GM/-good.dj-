@@ -36,6 +36,11 @@ dist-ssr
 electron-dist
 server-dist
 release
+resources/models/*.onnx
+resources/models/*.onnx.data
+resources/models/*.ort
+_tmp_demucs_onnx/
+_tmp_demucsv4.onnx
 
 # Editor directories and files
 .vscode/*

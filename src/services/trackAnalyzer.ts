@@ -1,3 +1,6 @@
+import essentiaWasmBinaryUrl from 'essentia.js/dist/essentia-wasm.web.wasm?url';
+import PQueue from 'p-queue';
+
 /**
  * Track Analysis Service - Powered by Essentia.js (WASM)
  * 
@@ -34,14 +37,16 @@ async function ensureEssentia(): Promise<any> {
             try {
                 // Dynamic imports — only loads WASM when actually needed
                 const [wasmModule, coreModule] = await Promise.all([
-                    import('essentia.js/dist/essentia-wasm.es.js'),
+                    import('essentia.js/dist/essentia-wasm.web.js'),
                     import('essentia.js/dist/essentia.js-core.es.js')
                 ]);
 
-                const EssentiaWASM = wasmModule.default;
-                const EssentiaJS = coreModule.default;
+                const EssentiaWASM = (wasmModule as any).default ?? (wasmModule as any).EssentiaWASM ?? wasmModule;
+                const EssentiaJS = (coreModule as any).default ?? coreModule;
 
-                const wasm = await EssentiaWASM();
+                const wasm = await EssentiaWASM({
+                    locateFile: () => essentiaWasmBinaryUrl,
+                });
                 essentiaInstance = new EssentiaJS(wasm, false);
                 console.log('[TrackAnalyzer] Essentia.js initialized — version:', essentiaInstance.version);
             } catch (err) {
@@ -103,13 +108,16 @@ function estimateBPM(essentia: any, signal: any): number {
  * Returns an array of beat timestamps in seconds.
  */
 function detectBeats(essentia: any, vectorSignal: any): number[] {
+    let result: any = null;
     try {
-        const result = essentia.BeatTrackerDegara(vectorSignal);
+        result = essentia.BeatTrackerDegara(vectorSignal);
         const ticks = essentia.vectorToArray(result.ticks);
         return Array.from(ticks);
     } catch (err) {
         console.warn('[TrackAnalyzer] Beat detection failed:', err);
         return [];
+    } finally {
+        result?.ticks?.delete?.();
     }
 }
 
@@ -182,15 +190,11 @@ function estimateKey(essentia: any, vectorSignal: any, sampleRate: number): { ke
                 }
             } finally {
                 // Cleanup frame-level vectors
-                if (windowed) delete windowed.frame;
-                if (spectrum) delete spectrum.spectrum;
-                if (peaks) {
-                    if (peaks.frequencies) peaks.frequencies.delete();
-                    if (peaks.magnitudes) peaks.magnitudes.delete();
-                }
-                if (hpcp) {
-                    if (hpcp.hpcp) hpcp.hpcp.delete();
-                }
+                windowed?.frame?.delete?.();
+                spectrum?.spectrum?.delete?.();
+                peaks?.frequencies?.delete?.();
+                peaks?.magnitudes?.delete?.();
+                hpcp?.hpcp?.delete?.();
             }
         }
 
@@ -301,7 +305,6 @@ export function shiftCamelotKey(key: string, semitones: number): string {
  * Analyze a loaded AudioBuffer and return BPM, Key, and Beat positions.
  * This is the main entry point for track analysis.
  */
-import PQueue from 'p-queue';
 
 // Singleton Worker & Queue to prevent resource exhaustion
 let worker: Worker | null = null;

@@ -1,7 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { StemType, EffectType, DeckState, DeckAction } from '../types';
+import { StemType, EffectType, DeckState, DeckAction, StemModelStatus } from '../types';
 import { StemControl, HorizontalBar, VerticalFader, VUMeter } from './StemControl';
 import { Waveform } from './Waveform';
 import { TrackOverview } from './TrackOverview';
@@ -186,6 +186,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     const [pressTimer, setPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
     const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
     const [padMode, setPadMode] = useState<'HOT_CUE' | 'STEMS' | 'LOOP'>('HOT_CUE');
+    const [stemModelStatus, setStemModelStatus] = useState<StemModelStatus | null>(null);
 
     // --- PITCH FADER DRAG STATE ---
     const [isDraggingPitch, setIsDraggingPitch] = useState(false);
@@ -226,6 +227,38 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
             window.removeEventListener('mouseup', handlePitchMouseUp);
         };
     }, [isDraggingPitch, id, dispatch]);
+
+    useEffect(() => {
+        if (!window.gooddj?.stems?.getStatus) {
+            return;
+        }
+
+        let active = true;
+        const refreshStemModelStatus = async () => {
+            try {
+                const status = await window.gooddj?.stems.getStatus();
+                if (active && status) {
+                    setStemModelStatus(status);
+                }
+            } catch {
+                if (active) {
+                    setStemModelStatus(null);
+                }
+            }
+        };
+
+        const handleStatusChanged = () => {
+            void refreshStemModelStatus();
+        };
+
+        void refreshStemModelStatus();
+        window.addEventListener('gooddj:stem-model-status-changed', handleStatusChanged);
+
+        return () => {
+            active = false;
+            window.removeEventListener('gooddj:stem-model-status-changed', handleStatusChanged);
+        };
+    }, []);
 
     // --- DRAG & DROP HANDLERS ---
     const handleDragOver = (e: React.DragEvent) => {
@@ -326,7 +359,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
         [StemType.MID]: { label: stemMode === 'real' ? 'OTHER' : 'MID', color: 'var(--stem-vocals)' },
         [StemType.HIGH]: { label: stemMode === 'real' ? 'VOCALS' : 'HIGH', color: 'var(--stem-harmonic)' },
     };
-    const canSeparateStems = Boolean(window.gooddj?.stems && track?.filePath);
+    const canSeparateStems = Boolean(window.gooddj?.stems && track?.filePath && stemModelStatus?.available);
 
     const LOOP_SIZES = [0.5, 1, 2, 4, 8];
 
@@ -663,7 +696,15 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                                                     ? 'Analyzing stems... ~15s'
                                                     : stemMode === 'real'
                                                         ? 'Real drums / bass / other / vocals loaded'
-                                                        : 'Load proprietary Demucs stems in Electron'}
+                                                        : !window.gooddj?.stems
+                                                            ? 'Stem separation is available in Electron only'
+                                                            : !stemModelStatus?.available
+                                                                ? 'Install or bundle a noncommercial ONNX model first'
+                                                                : stemModelStatus.source === 'user-installed'
+                                                                    ? 'User-installed stem model ready'
+                                                                    : stemModelStatus.source === 'bundled'
+                                                                        ? 'Bundled free-release stem model ready'
+                                                                        : 'Stem model ready'}
                                             </span>
                                         </div>
                                         <button
@@ -675,7 +716,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                                                     : 'border-signal-nominal/30 text-signal-nominal bg-signal-nominal/10 hover:bg-signal-nominal/20'
                                             }`}
                                         >
-                                            {isSeparatingStems ? 'Working' : stemMode === 'real' ? 'Loaded' : 'Separate'}
+                                            {isSeparatingStems ? 'Working' : stemMode === 'real' ? 'Loaded' : canSeparateStems ? 'Separate' : 'Unavailable'}
                                         </button>
                                     </div>
 

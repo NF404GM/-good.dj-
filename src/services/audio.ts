@@ -402,7 +402,7 @@ class AudioEngineService {
         }
     }
 
-    private createStemBuffer(data: number[], sampleRate: number) {
+    private createStemBuffer(data: Float32Array | number[], sampleRate: number) {
         const buffer = this.ctx.createBuffer(1, data.length, sampleRate);
         buffer.getChannelData(0).set(data);
         return buffer;

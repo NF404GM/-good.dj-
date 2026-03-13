@@ -14,8 +14,10 @@
         "build": "vite build",
         "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:prolink-connect --external:ws --external:express --external:multer --external:cors --outfile=server-dist/index.js",
         "build:electron": "node scripts/build-electron.mjs",
+        "stems:download-test-model": "node scripts/download-demucs-model.mjs",
         "electron:dev": "cross-env NODE_ENV=development concurrently \"npm run dev\" \"wait-on tcp:5173 && electron -r tsx/register electron/main.ts\"",
-        "electron:build": "npm run build && npm run build:server && npm run build:electron && electron-builder",
+        "electron:build": "npm run build && npm run build:server && npm run build:electron && electron-builder --config electron-builder.config.cjs",
+        "electron:build:free-with-stem-model": "cross-env GOODDJ_BUNDLE_STEM_MODEL=1 npm run electron:build && node scripts/finalize-free-release.mjs",
         "preview": "vite preview",
         "lint": "eslint . --ext .ts,.tsx",
         "typecheck": "tsc --noEmit",
@@ -38,12 +40,9 @@
         "asarUnpack": [
             "bin/**/*.exe"
         ],
-        "extraResources": [
-            {
-                "from": "resources/models",
-                "to": "models"
-            }
-        ],
+        "toolsets": {
+            "winCodeSign": "1.1.0"
+        },
         "npmRebuild": true,
         "directories": {
             "buildResources": "assets",
@@ -59,7 +58,8 @@
             "target": [
                 "nsis"
             ],
-            "icon": "assets/icon.ico"
+            "icon": "assets/icon.ico",
+            "signAndEditExecutable": false
         },
         "nsis": {
             "oneClick": false,
@@ -110,6 +110,7 @@
         "eslint": "^9.22.0",
         "eslint-plugin-react-hooks": "^5.2.0",
         "jsdom": "^28.1.0",
+        "node-gyp": "^12.2.0",
         "prisma": "6.19.2",
         "ts-node": "^10.9.2",
         "tsx": "^4.21.0",
@@ -118,5 +119,10 @@
         "vite": "^6.2.0",
         "vitest": "^4.1.0",
         "wait-on": "^9.0.4"
+    },
+    "overrides": {
+        "prolink-connect": {
+            "better-sqlite3": "12.6.2"
+        }
     }
 }

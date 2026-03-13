@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('gooddj', {
     },
     stems: {
         separate: (filePath: string) => ipcRenderer.invoke('stems:separate', filePath),
+        getStatus: () => ipcRenderer.invoke('stems:getStatus'),
+        installModel: (filePath: string) => ipcRenderer.invoke('stems:installModel', filePath),
+        removeInstalledModel: () => ipcRenderer.invoke('stems:removeInstalledModel'),
     },
     // App info
     getVersion: () => ipcRenderer.invoke('app:version'),

@@ -1,3 +1,5 @@
+import essentiaWasmBinaryUrl from 'essentia.js/dist/essentia-wasm.web.wasm?url';
+
 let essentia: any = null;
 
 const CAMELOT_MAP: Record<string, string> = {
@@ -17,11 +19,13 @@ async function initEssentia() {
         return essentia;
     }
 
-    const wasmModule = await import('essentia.js/dist/essentia-wasm.es.js');
+    const wasmModule = await import('essentia.js/dist/essentia-wasm.web.js');
     const coreModule = await import('essentia.js/dist/essentia.js-core.es.js');
-    const EssentiaWASM = (wasmModule as any).default ?? wasmModule;
+    const EssentiaWASM = (wasmModule as any).default ?? (wasmModule as any).EssentiaWASM ?? wasmModule;
     const EssentiaCore = (coreModule as any).default ?? coreModule;
-    const wasm = await EssentiaWASM();
+    const wasm = await EssentiaWASM({
+        locateFile: () => essentiaWasmBinaryUrl,
+    });
     essentia = new EssentiaCore(wasm, false);
     return essentia;
 }

@@ -26,6 +26,11 @@
     "noEmit": true
   },
   "exclude": [
-    "server"
+    "dist",
+    "electron-dist",
+    "release",
+    "server",
+    "server-dist",
+    "_tmp_demucs_onnx"
   ]
 }

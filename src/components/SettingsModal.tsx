@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GlobalDjState, DeckAction } from '../types';
+import { GlobalDjState, DeckAction, StemModelStatus } from '../types';
 
 interface SettingsModalProps {
     state: GlobalDjState;
@@ -8,8 +8,13 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch }) => {
-    const [activeTab, setActiveTab] = useState<'AUDIO' | 'MIDI' | 'APPEARANCE'>('APPEARANCE');
+    const [activeTab, setActiveTab] = useState<'AUDIO' | 'MIDI' | 'APPEARANCE' | 'STEMS'>('APPEARANCE');
     const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+    const [stemModelStatus, setStemModelStatus] = useState<StemModelStatus | null>(null);
+    const [stemModelError, setStemModelError] = useState<string | null>(null);
+    const [isInstallingStemModel, setIsInstallingStemModel] = useState(false);
+    const [isRemovingStemModel, setIsRemovingStemModel] = useState(false);
+    const stemModelInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (activeTab === 'AUDIO') {
@@ -19,9 +24,91 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
         }
     }, [activeTab]);
 
+    useEffect(() => {
+        if (!state.settings.isOpen || !window.gooddj?.stems?.getStatus) {
+            return;
+        }
+
+        let active = true;
+        window.gooddj.stems.getStatus()
+            .then((status) => {
+                if (active) {
+                    setStemModelStatus(status);
+                    setStemModelError(null);
+                }
+            })
+            .catch((error) => {
+                if (active) {
+                    setStemModelError(error instanceof Error ? error.message : String(error));
+                }
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [state.settings.isOpen, activeTab]);
+
     const handleLearn = (actionId: string) => {
         dispatch({ type: 'LEARN_MIDI', actionId });
     };
+
+    const syncStemModelStatus = async () => {
+        if (!window.gooddj?.stems?.getStatus) {
+            return;
+        }
+
+        const status = await window.gooddj.stems.getStatus();
+        setStemModelStatus(status);
+        setStemModelError(null);
+        window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
+    };
+
+    const handleStemModelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        const filePath = (file as any)?.path as string | undefined;
+
+        if (!filePath || !window.gooddj?.stems?.installModel) {
+            return;
+        }
+
+        setIsInstallingStemModel(true);
+        setStemModelError(null);
+
+        try {
+            const status = await window.gooddj.stems.installModel(filePath);
+            setStemModelStatus(status);
+            window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
+        } catch (error) {
+            setStemModelError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setIsInstallingStemModel(false);
+            if (e.target) {
+                e.target.value = '';
+            }
+        }
+    };
+
+    const handleRemoveStemModel = async () => {
+        if (!window.gooddj?.stems?.removeInstalledModel) {
+            return;
+        }
+
+        setIsRemovingStemModel(true);
+        setStemModelError(null);
+
+        try {
+            const status = await window.gooddj.stems.removeInstalledModel();
+            setStemModelStatus(status);
+            window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
+        } catch (error) {
+            setStemModelError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setIsRemovingStemModel(false);
+        }
+    };
+
+    const formatShape = (shape: Array<string | number | null | undefined>) =>
+        shape.length > 0 ? shape.map((part) => part ?? '?').join(' x ') : 'Unknown';
 
     const MAPPING_GROUPS = [
         {
@@ -31,14 +118,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                 { id: 'DECK_A_CUE', label: 'CUE' },
                 { id: 'DECK_A_SYNC', label: 'SYNC' },
                 { id: 'DECK_A_PITCH', label: 'PITCH' },
-
                 { id: 'DECK_A_EQ_TRIM', label: 'TRIM' },
                 { id: 'DECK_A_EQ_HIGH', label: 'EQ HI' },
                 { id: 'DECK_A_EQ_MID', label: 'EQ MID' },
                 { id: 'DECK_A_EQ_LOW', label: 'EQ LOW' },
                 { id: 'DECK_A_FILTER', label: 'FILTER' },
                 { id: 'DECK_A_VOL', label: 'FADER' },
-
                 { id: 'DECK_A_HOTCUE_1', label: 'HOTCUE 1' },
                 { id: 'DECK_A_HOTCUE_2', label: 'HOTCUE 2' },
                 { id: 'DECK_A_HOTCUE_3', label: 'HOTCUE 3' },
@@ -47,9 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                 { id: 'DECK_A_HOTCUE_6', label: 'HOTCUE 6' },
                 { id: 'DECK_A_HOTCUE_7', label: 'HOTCUE 7' },
                 { id: 'DECK_A_HOTCUE_8', label: 'HOTCUE 8' },
-
                 { id: 'DECK_A_LOOP_AUTO', label: 'AUTO LOOP' },
-
                 { id: 'DECK_A_FX_ON', label: 'FX ON' },
                 { id: 'DECK_A_FX_WET', label: 'FX WET' },
             ]
@@ -61,14 +144,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                 { id: 'DECK_B_CUE', label: 'CUE' },
                 { id: 'DECK_B_SYNC', label: 'SYNC' },
                 { id: 'DECK_B_PITCH', label: 'PITCH' },
-
                 { id: 'DECK_B_EQ_TRIM', label: 'TRIM' },
                 { id: 'DECK_B_EQ_HIGH', label: 'EQ HI' },
                 { id: 'DECK_B_EQ_MID', label: 'EQ MID' },
                 { id: 'DECK_B_EQ_LOW', label: 'EQ LOW' },
                 { id: 'DECK_B_FILTER', label: 'FILTER' },
                 { id: 'DECK_B_VOL', label: 'FADER' },
-
                 { id: 'DECK_B_HOTCUE_1', label: 'HOTCUE 1' },
                 { id: 'DECK_B_HOTCUE_2', label: 'HOTCUE 2' },
                 { id: 'DECK_B_HOTCUE_3', label: 'HOTCUE 3' },
@@ -77,9 +158,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                 { id: 'DECK_B_HOTCUE_6', label: 'HOTCUE 6' },
                 { id: 'DECK_B_HOTCUE_7', label: 'HOTCUE 7' },
                 { id: 'DECK_B_HOTCUE_8', label: 'HOTCUE 8' },
-
                 { id: 'DECK_B_LOOP_AUTO', label: 'AUTO LOOP' },
-
                 { id: 'DECK_B_FX_ON', label: 'FX ON' },
                 { id: 'DECK_B_FX_WET', label: 'FX WET' },
             ]
@@ -107,25 +186,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
                         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                        className="w-[600px] h-[520px] bg-canvas border border-white/10 shadow-huge flex flex-col rounded-panel overflow-hidden"
+                        className="w-[680px] h-[560px] bg-canvas border border-white/10 shadow-huge flex flex-col rounded-panel overflow-hidden"
                     >
-
-                        {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-surface-idle">
                             <h2 className="text-sm font-bold tracking-widest text-text-primary">SETTINGS</h2>
-                            <button onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })} className="text-text-secondary hover:text-text-primary transition-colors p-1 text-lg">✕</button>
+                            <button onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })} className="text-text-secondary hover:text-text-primary transition-colors p-1 text-lg">X</button>
                         </div>
 
-                        {/* Tabs */}
                         <div className="flex border-b border-white/10 bg-surface-idle/50">
                             {[
                                 { id: 'APPEARANCE', label: 'APPEARANCE' },
                                 { id: 'AUDIO', label: 'AUDIO OUTPUT' },
-                                { id: 'MIDI', label: 'MIDI MAPPING' }
+                                { id: 'MIDI', label: 'MIDI MAPPING' },
+                                { id: 'STEMS', label: 'STEM MODEL' }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => setActiveTab(tab.id as any)}
+                                    onClick={() => setActiveTab(tab.id as typeof activeTab)}
                                     className={`flex-1 py-3 text-[10px] font-bold tracking-wider transition-all relative ${activeTab === tab.id ? 'text-text-primary' : 'bg-transparent text-text-secondary hover:text-text-primary/70'}`}
                                 >
                                     {tab.label}
@@ -134,7 +211,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                             ))}
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 overflow-y-auto p-6 bg-canvas relative">
                             <AnimatePresence mode="wait">
                                 {activeTab === 'APPEARANCE' && (
@@ -145,7 +221,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                                         exit={{ opacity: 0, scale: 0.98 }}
                                         className="flex flex-col gap-8"
                                     >
-                                        {/* Theme Info */}
                                         <div className="flex flex-col gap-3">
                                             <h3 className="text-[10px] font-bold text-text-data uppercase tracking-widest">Global Theme</h3>
                                             <div className="flex items-center gap-3 p-4 bg-surface-idle border border-white/5 rounded-btn-sm">
@@ -160,11 +235,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
 
                                         <div className="mt-4 p-3 bg-surface-idle border border-white/5 rounded-btn-sm">
                                             <p className="text-[9px] text-text-secondary leading-relaxed">
-                                                <strong>Hardware Warm</strong> is good.dj's signature studio theme — deep blacks, precision typography, and signal-green accents optimized for performance.
+                                                <strong>Hardware Warm</strong> is good.dj&apos;s signature studio theme: deep blacks, precision typography, and signal-green accents optimized for performance.
                                             </p>
                                         </div>
                                     </motion.div>
                                 )}
+
                                 {activeTab === 'AUDIO' && (
                                     <motion.div
                                         key="audio"
@@ -229,6 +305,118 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                                                 </div>
                                             </div>
                                         ))}
+                                    </motion.div>
+                                )}
+
+                                {activeTab === 'STEMS' && (
+                                    <motion.div
+                                        key="stems"
+                                        initial={{ opacity: 0, x: 10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -10 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="flex flex-col gap-4"
+                                    >
+                                        <input
+                                            ref={stemModelInputRef}
+                                            type="file"
+                                            accept=".onnx"
+                                            onChange={handleStemModelFile}
+                                            className="hidden"
+                                        />
+
+                                        <div className="bg-surface-idle border border-white/10 rounded-btn-sm p-4 flex flex-col gap-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-[10px] font-bold tracking-widest text-text-data uppercase">Current Stem Model</div>
+                                                    <div className="text-xs text-text-primary mt-1">
+                                                        {stemModelStatus?.available ? stemModelStatus.fileName : 'No local model installed'}
+                                                    </div>
+                                                </div>
+                                                <div className={`px-2 py-1 text-[9px] font-bold rounded-btn-sm border ${
+                                                    stemModelStatus?.available
+                                                        ? 'border-signal-nominal/30 text-signal-nominal bg-signal-nominal/10'
+                                                        : 'border-white/10 text-text-secondary bg-canvas'
+                                                }`}>
+                                                    {stemModelStatus?.available ? 'READY' : 'INACTIVE'}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3 text-[10px]">
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Source</div>
+                                                    <div className="text-text-primary">{stemModelStatus?.source ?? 'None'}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Input Shape</div>
+                                                    <div className="text-text-primary">{formatShape(stemModelStatus?.inputShape ?? [])}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Output Shape</div>
+                                                    <div className="text-text-primary">{formatShape(stemModelStatus?.outputShape ?? [])}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Status</div>
+                                                    <div className="text-text-primary">{stemModelStatus?.message ?? 'Electron-only feature'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-signal-nominal/10 border border-signal-nominal/20 p-3 rounded-btn-sm">
+                                            <p className="text-[9px] text-signal-nominal font-bold leading-relaxed">
+                                                This project can bundle a provided stem model for free noncommercial releases, but the default production build still keeps model bundling opt-in.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-[#3b0b0b] border border-[#7f1d1d] p-3 rounded-btn-sm">
+                                            <p className="text-[9px] text-[#fecaca] leading-relaxed">
+                                                Keep attribution with any bundled-model giveaway. Do not reuse that same release path later for paid, sponsored, or monetized distribution without re-checking the model rights.
+                                            </p>
+                                        </div>
+
+                                        {stemModelError && (
+                                            <div className="bg-[#3b0b0b] border border-[#7f1d1d] rounded-btn-sm p-3 text-[9px] text-[#fecaca]">
+                                                {stemModelError}
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => stemModelInputRef.current?.click()}
+                                                disabled={!window.gooddj?.stems || isInstallingStemModel}
+                                                className={`flex-1 py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
+                                                    !window.gooddj?.stems || isInstallingStemModel
+                                                        ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
+                                                        : 'bg-surface-active border-signal-nominal/30 text-text-primary hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {isInstallingStemModel ? 'INSTALLING...' : 'INSTALL LOCAL ONNX MODEL'}
+                                            </button>
+
+                                            <button
+                                                onClick={() => void syncStemModelStatus()}
+                                                disabled={!window.gooddj?.stems}
+                                                className={`px-4 py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
+                                                    !window.gooddj?.stems
+                                                        ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
+                                                        : 'bg-canvas border-white/10 text-text-primary hover:bg-white/5'
+                                                }`}
+                                            >
+                                                REFRESH
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={() => void handleRemoveStemModel()}
+                                            disabled={!window.gooddj?.stems || !stemModelStatus?.available || stemModelStatus.source !== 'user-installed' || isRemovingStemModel}
+                                            className={`py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
+                                                !window.gooddj?.stems || !stemModelStatus?.available || stemModelStatus.source !== 'user-installed' || isRemovingStemModel
+                                                    ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
+                                                    : 'bg-canvas border-[#7f1d1d] text-[#fecaca] hover:bg-[#3b0b0b]'
+                                            }`}
+                                        >
+                                            {isRemovingStemModel ? 'REMOVING...' : 'REMOVE USER-INSTALLED MODEL'}
+                                        </button>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
