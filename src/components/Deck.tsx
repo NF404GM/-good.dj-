@@ -7,14 +7,14 @@ import { TrackOverview } from './TrackOverview';
 import { AudioEngine } from '../services/audio';
 
 const CUE_COLORS = [
-    'var(--color-signal-peak)',
-    '#f97316',
-    '#eab308',
-    '#22c55e',
-    '#06b6d4',
-    '#3b82f6',
-    '#8b5cf6',
-    '#ec4899',
+    'var(--color-cue-1)',
+    'var(--color-cue-2)',
+    'var(--color-cue-3)',
+    'var(--color-cue-4)',
+    'var(--color-cue-5)',
+    'var(--color-cue-6)',
+    'var(--color-cue-7)',
+    'var(--color-cue-8)',
 ];
 
 const SPRING_SNAPPY = { type: 'spring', stiffness: 500, damping: 30, mass: 0.8 } as const;
@@ -123,7 +123,7 @@ export const TechnicalKnob: React.FC<{
                         cy="20"
                         r={16}
                         fill="none"
-                        stroke={isDragging ? '#ffffff' : color}
+                        stroke={isDragging ? 'var(--color-white)' : color}
                         strokeWidth="4"
                         strokeDasharray={circumference}
                         animate={{ strokeDashoffset }}
@@ -195,6 +195,8 @@ const TransportButton: React.FC<{
             ].join(' ')}
             disabled={disabled}
             onClick={onClick}
+            aria-label={label}
+            aria-pressed={active}
         >
             <span className={`font-mono font-black uppercase tracking-[0.28em] ${compact ? 'text-[13px]' : 'text-[24px] italic'}`}>
                 {label}
@@ -478,6 +480,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                         onMouseDown={() => handlePadDown(index)}
                         onMouseUp={() => handlePadUp(index)}
                         onMouseLeave={() => pressTimer && clearTimeout(pressTimer)}
+                        aria-label={`Hot Cue ${index + 1}${isSet ? ` at ${cueTime}` : ' empty'}`}
                     >
                         <div
                             className="absolute inset-x-0 top-0 h-[3px] rounded-t-btn-lg"
