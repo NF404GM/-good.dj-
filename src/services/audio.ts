@@ -35,7 +35,7 @@ class AudioEngineService {
     private stemDecks: Record<string, RealStemDeck> = {};
 
     constructor() {
-        this.ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
+        this.ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 44100 });
         this.tunaFx = new EffectsEngine(this.ctx);
         this.masterGain = this.ctx.createGain();
         this.masterGain.connect(this.ctx.destination);
@@ -404,8 +404,27 @@ class AudioEngineService {
     }
 
     private createStemBuffer(data: Float32Array | number[], sampleRate: number) {
-        const buffer = this.ctx.createBuffer(1, data.length, sampleRate);
-        buffer.getChannelData(0).set(data);
+        // SB-5 fix: Create stereo buffer.
+        // If data arrives as interleaved stereo (L,R,L,R,...), deinterleave.
+        // If data is mono, duplicate to both channels.
+        const isStereo = data.length % 2 === 0;
+        const frameCount = isStereo ? Math.floor(data.length / 2) : data.length;
+        const buffer = this.ctx.createBuffer(2, frameCount, sampleRate);
+        const left = buffer.getChannelData(0);
+        const right = buffer.getChannelData(1);
+
+        if (isStereo && data.length > frameCount) {
+            // Deinterleave stereo data
+            for (let i = 0; i < frameCount; i++) {
+                left[i] = data[i * 2];
+                right[i] = data[i * 2 + 1];
+            }
+        } else {
+            // Mono fallback: duplicate to both channels
+            const monoData = data instanceof Float32Array ? data : new Float32Array(data);
+            left.set(monoData);
+            right.set(monoData);
+        }
         return buffer;
     }
 
