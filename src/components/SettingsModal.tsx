@@ -1,209 +1,307 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GlobalDjState, DeckAction } from '../types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GlobalDjState, DeckAction, StemModelStatus } from '../types';
 
 interface SettingsModalProps {
     state: GlobalDjState;
     dispatch: (action: DeckAction) => void;
 }
 
-const SettingsSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="mb-6">
-        <h3 className="mb-3 font-mono text-[9px] font-bold uppercase tracking-[0.22em] text-text-data">{title}</h3>
-        <div className="space-y-2">{children}</div>
-    </div>
-);
-
-const SettingsRow: React.FC<{ label: string; children: React.ReactNode; description?: string }> = ({ label, children, description }) => (
-    <div className="flex items-center justify-between gap-4 rounded-btn-sm border border-white/6 bg-black/30 px-3 py-2.5">
-        <div className="min-w-0">
-            <div className="font-mono text-[10px] font-bold text-text-primary">{label}</div>
-            {description && <div className="mt-0.5 font-mono text-[8px] text-text-data/60">{description}</div>}
-        </div>
-        <div className="shrink-0">{children}</div>
-    </div>
-);
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch }) => {
-    const { settings } = state;
+    const [activeTab, setActiveTab] = useState<'AUDIO' | 'MIDI' | 'APPEARANCE' | 'STEMS'>('APPEARANCE');
     const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-    const [midiDevices, setMidiDevices] = useState<string[]>([]);
-    const [mediaError, setMediaError] = useState<string | null>(null);
-    const [isLearning, setIsLearning] = useState<string | null>(null);
-    const overlayRef = useRef<HTMLDivElement>(null);
+    const [stemModelStatus, setStemModelStatus] = useState<StemModelStatus | null>(null);
+    const [stemModelError, setStemModelError] = useState<string | null>(null);
+    const [isInstallingStemModel, setIsInstallingStemModel] = useState(false);
+    const [isRemovingStemModel, setIsRemovingStemModel] = useState(false);
+    const stemModelInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (!settings.isOpen) return;
-        setMediaError(null);
-
-        navigator.mediaDevices
-            .enumerateDevices()
-            .then((devices) => {
-                setAudioDevices(devices.filter((d) => d.kind === 'audiooutput'));
-            })
-            .catch((err) => {
-                setMediaError(`Could not enumerate audio devices: ${err.message}`);
+        if (activeTab === 'AUDIO') {
+            navigator.mediaDevices.enumerateDevices().then(devices => {
+                setAudioDevices(devices.filter(d => d.kind === 'audiooutput'));
             });
-
-        if ('requestMIDIAccess' in navigator) {
-            (navigator as any)
-                .requestMIDIAccess()
-                .then((midiAccess: any) => {
-                    const inputs = Array.from(midiAccess.inputs.values()) as any[];
-                    setMidiDevices(inputs.map((i) => i.name));
-                })
-                .catch(() => {
-                    setMidiDevices([]);
-                });
         }
-    }, [settings.isOpen]);
+    }, [activeTab]);
 
-    useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && settings.isOpen) {
-                dispatch({ type: 'TOGGLE_SETTINGS' });
-            }
-        };
-        window.addEventListener('keydown', handleKey);
-        return () => window.removeEventListener('keydown', handleKey);
-    }, [dispatch, settings.isOpen]);
+    // Stem model status check removed — AI stems not available in web mode
 
-    if (!settings.isOpen) return null;
+    const handleLearn = (actionId: string) => {
+        dispatch({ type: 'LEARN_MIDI', actionId });
+    };
 
-    const MIDI_ACTIONS = [
-        { id: 'DECK_A_PLAY', label: 'Deck A — Play/Pause' },
-        { id: 'DECK_A_CUE', label: 'Deck A — Cue' },
-        { id: 'DECK_B_PLAY', label: 'Deck B — Play/Pause' },
-        { id: 'DECK_B_CUE', label: 'Deck B — Cue' },
-        { id: 'CROSSFADER', label: 'Crossfader (CC)' },
+    // Stem model install/remove handlers removed — AI stems not available in web mode
+
+    const formatShape = (shape: Array<string | number | null | undefined>) =>
+        shape.length > 0 ? shape.map((part) => part ?? '?').join(' x ') : 'Unknown';
+
+    const MAPPING_GROUPS = [
+        {
+            label: 'DECK A',
+            actions: [
+                { id: 'DECK_A_PLAY', label: 'PLAY' },
+                { id: 'DECK_A_CUE', label: 'CUE' },
+                { id: 'DECK_A_SYNC', label: 'SYNC' },
+                { id: 'DECK_A_PITCH', label: 'PITCH' },
+                { id: 'DECK_A_EQ_TRIM', label: 'TRIM' },
+                { id: 'DECK_A_EQ_HIGH', label: 'EQ HI' },
+                { id: 'DECK_A_EQ_MID', label: 'EQ MID' },
+                { id: 'DECK_A_EQ_LOW', label: 'EQ LOW' },
+                { id: 'DECK_A_FILTER', label: 'FILTER' },
+                { id: 'DECK_A_VOL', label: 'FADER' },
+                { id: 'DECK_A_HOTCUE_1', label: 'HOTCUE 1' },
+                { id: 'DECK_A_HOTCUE_2', label: 'HOTCUE 2' },
+                { id: 'DECK_A_HOTCUE_3', label: 'HOTCUE 3' },
+                { id: 'DECK_A_HOTCUE_4', label: 'HOTCUE 4' },
+                { id: 'DECK_A_HOTCUE_5', label: 'HOTCUE 5' },
+                { id: 'DECK_A_HOTCUE_6', label: 'HOTCUE 6' },
+                { id: 'DECK_A_HOTCUE_7', label: 'HOTCUE 7' },
+                { id: 'DECK_A_HOTCUE_8', label: 'HOTCUE 8' },
+                { id: 'DECK_A_LOOP_AUTO', label: 'AUTO LOOP' },
+                { id: 'DECK_A_FX_ON', label: 'FX ON' },
+                { id: 'DECK_A_FX_WET', label: 'FX WET' },
+            ]
+        },
+        {
+            label: 'DECK B',
+            actions: [
+                { id: 'DECK_B_PLAY', label: 'PLAY' },
+                { id: 'DECK_B_CUE', label: 'CUE' },
+                { id: 'DECK_B_SYNC', label: 'SYNC' },
+                { id: 'DECK_B_PITCH', label: 'PITCH' },
+                { id: 'DECK_B_EQ_TRIM', label: 'TRIM' },
+                { id: 'DECK_B_EQ_HIGH', label: 'EQ HI' },
+                { id: 'DECK_B_EQ_MID', label: 'EQ MID' },
+                { id: 'DECK_B_EQ_LOW', label: 'EQ LOW' },
+                { id: 'DECK_B_FILTER', label: 'FILTER' },
+                { id: 'DECK_B_VOL', label: 'FADER' },
+                { id: 'DECK_B_HOTCUE_1', label: 'HOTCUE 1' },
+                { id: 'DECK_B_HOTCUE_2', label: 'HOTCUE 2' },
+                { id: 'DECK_B_HOTCUE_3', label: 'HOTCUE 3' },
+                { id: 'DECK_B_HOTCUE_4', label: 'HOTCUE 4' },
+                { id: 'DECK_B_HOTCUE_5', label: 'HOTCUE 5' },
+                { id: 'DECK_B_HOTCUE_6', label: 'HOTCUE 6' },
+                { id: 'DECK_B_HOTCUE_7', label: 'HOTCUE 7' },
+                { id: 'DECK_B_HOTCUE_8', label: 'HOTCUE 8' },
+                { id: 'DECK_B_LOOP_AUTO', label: 'AUTO LOOP' },
+                { id: 'DECK_B_FX_ON', label: 'FX ON' },
+                { id: 'DECK_B_FX_WET', label: 'FX WET' },
+            ]
+        },
+        {
+            label: 'GLOBAL',
+            actions: [
+                { id: 'CROSSFADER', label: 'CROSSFADER' }
+            ]
+        }
     ];
 
     return (
-        <div
-            ref={overlayRef}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-sm"
-            onClick={(e) => { if (e.target === overlayRef.current) dispatch({ type: 'TOGGLE_SETTINGS' }); }}
-        >
-            <div className="surface-panel relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-panel border border-white/10 shadow-2xl">
-                {/* Header */}
-                <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-5 py-4">
-                    <div>
-                        <h2 className="font-mono text-[11px] font-black uppercase tracking-[0.2em] text-text-primary">Settings</h2>
-                        <p className="mt-0.5 font-mono text-[8px] text-text-data">Audio output, MIDI, and system configuration</p>
-                    </div>
-                    <button
-                        onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
-                        className="flex h-8 w-8 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 text-text-data transition-all hover:border-white/20 hover:text-text-primary"
+        <AnimatePresence>
+            {state.settings.isOpen && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                >
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Settings"
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                        className="w-[680px] h-[560px] bg-canvas border border-white/10 shadow-huge flex flex-col rounded-panel overflow-hidden"
                     >
-                        ×
-                    </button>
-                </div>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-surface-idle">
+                            <h2 className="text-sm font-bold tracking-widest text-text-primary">SETTINGS</h2>
+                            <button onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })} className="text-text-secondary hover:text-text-primary transition-colors p-1 text-lg">X</button>
+                        </div>
 
-                {/* Scrollable Body */}
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                    {/* Audio Output */}
-                    <SettingsSection title="Audio Output">
-                        {mediaError ? (
-                            <div className="rounded-btn-sm border border-signal-clipping/30 bg-signal-clipping/10 p-3 font-mono text-[9px] text-signal-clipping">
-                                {mediaError}
-                            </div>
-                        ) : (
-                            <SettingsRow
-                                label="Output Device"
-                                description="Select which audio device to use for playback"
-                            >
-                                <select
-                                    value={settings.audioOutputId || ''}
-                                    onChange={(e) => dispatch({ type: 'SET_AUDIO_OUTPUT', deviceId: e.target.value })}
-                                    className="rounded-btn-sm border border-white/10 bg-black/40 px-2 py-1 font-mono text-[9px] text-text-primary"
+                        <div className="flex border-b border-white/10 bg-surface-idle/50">
+                            {[
+                                { id: 'APPEARANCE', label: 'APPEARANCE' },
+                                { id: 'AUDIO', label: 'AUDIO OUTPUT' },
+                                { id: 'MIDI', label: 'MIDI MAPPING' },
+                                { id: 'STEMS', label: 'STEM MODEL' }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                                    className={`flex-1 py-3 text-[10px] font-bold tracking-wider transition-all relative ${activeTab === tab.id ? 'text-text-primary' : 'bg-transparent text-text-secondary hover:text-text-primary/70'}`}
                                 >
-                                    <option value="">Default Output</option>
-                                    {audioDevices.map((device) => (
-                                        <option key={device.deviceId} value={device.deviceId}>
-                                            {device.label || `Device ${device.deviceId.slice(0, 6)}`}
-                                        </option>
-                                    ))}
-                                </select>
-                            </SettingsRow>
-                        )}
-                    </SettingsSection>
+                                    {tab.label}
+                                    {activeTab === tab.id && <motion.div layoutId="settings-tab-indicator" className="absolute bottom-0 left-4 right-4 h-0.5 bg-signal-nominal rounded-full shadow-[0_0_10px_rgba(var(--signal-nominal-rgb),0.5)]" />}
+                                </button>
+                            ))}
+                        </div>
 
-                    {/* MIDI */}
-                    <SettingsSection title="MIDI">
-                        <SettingsRow label="Connected Devices">
-                            <div className="font-mono text-[9px] text-text-data">
-                                {midiDevices.length > 0 ? midiDevices.join(', ') : 'None detected'}
-                            </div>
-                        </SettingsRow>
-
-                        {MIDI_ACTIONS.map((action) => {
-                            const mapping = settings.midiMappings?.[action.id];
-                            return (
-                                <SettingsRow
-                                    key={action.id}
-                                    label={action.label}
-                                    description={mapping ? `${mapping.type.toUpperCase()} ${mapping.note} (Ch ${mapping.channel})` : 'Not mapped'}
-                                >
-                                    <button
-                                        onClick={() => {
-                                            dispatch({ type: 'LEARN_MIDI', actionId: action.id });
-                                            setIsLearning(action.id);
-                                            setTimeout(() => setIsLearning(null), 5000);
-                                        }}
-                                        className={`rounded-btn-sm border px-2 py-1 font-mono text-[8px] transition-all ${
-                                            isLearning === action.id
-                                                ? 'animate-pulse border-signal-nominal/50 bg-signal-nominal/15 text-signal-nominal'
-                                                : 'border-white/10 bg-black/30 text-text-data hover:border-white/20'
-                                        }`}
+                        <div className="flex-1 overflow-y-auto p-6 bg-canvas relative">
+                            <AnimatePresence mode="wait">
+                                {activeTab === 'APPEARANCE' && (
+                                    <motion.div
+                                        key="appearance"
+                                        initial={{ opacity: 0, scale: 0.98 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.98 }}
+                                        className="flex flex-col gap-8"
                                     >
-                                        {isLearning === action.id ? 'LISTENING...' : 'LEARN'}
-                                    </button>
-                                </SettingsRow>
-                            );
-                        })}
-                    </SettingsSection>
+                                        <div className="flex flex-col gap-3">
+                                            <h3 className="text-[10px] font-bold text-text-data uppercase tracking-widest">Global Theme</h3>
+                                            <div className="flex items-center gap-3 p-4 bg-surface-idle border border-white/5 rounded-btn-sm">
+                                                <div className="w-8 h-8 rounded-full shadow-lg bg-[#0f0f0f] border border-white/10" />
+                                                <div className="flex flex-col">
+                                                    <span className="text-[11px] font-bold tracking-widest text-text-primary">HARDWARE WARM</span>
+                                                    <span className="text-[9px] text-text-secondary mt-1">Dark, high-contrast studio theme</span>
+                                                </div>
+                                                <div className="ml-auto w-2 h-2 rounded-full bg-signal-nominal animate-pulse" />
+                                            </div>
+                                        </div>
 
-                    {/* Performance */}
-                    <SettingsSection title="Performance">
-                        <SettingsRow
-                            label="Waveform Resolution"
-                            description="Higher resolution uses more memory"
-                        >
-                            <div className="font-mono text-[9px] text-text-data">2048 samples</div>
-                        </SettingsRow>
-                        <SettingsRow
-                            label="Analysis Engine"
-                            description="BPM and key detection"
-                        >
-                            <div className="font-mono text-[9px] text-signal-nominal">Essentia.js</div>
-                        </SettingsRow>
-                        <SettingsRow
-                            label="Pitch Engine"
-                            description="Time-stretch / key-lock algorithm"
-                        >
-                            <div className="font-mono text-[9px] text-signal-nominal">SignalSmith</div>
-                        </SettingsRow>
-                        <SettingsRow
-                            label="Stem Mode"
-                            description="Current stem separation method"
-                        >
-                            <div className="font-mono text-[9px] text-text-data">EQ Filters (Web)</div>
-                        </SettingsRow>
-                    </SettingsSection>
+                                        <div className="mt-4 p-3 bg-surface-idle border border-white/5 rounded-btn-sm">
+                                            <p className="text-[9px] text-text-secondary leading-relaxed">
+                                                <strong>Hardware Warm</strong> is good.dj&apos;s signature studio theme: deep blacks, precision typography, and signal-green accents optimized for performance.
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                )}
 
-                    {/* About */}
-                    <SettingsSection title="About">
-                        <SettingsRow label="Version">
-                            <div className="font-mono text-[9px] text-text-data">1.0.0</div>
-                        </SettingsRow>
-                        <SettingsRow label="Build Target">
-                            <div className="font-mono text-[9px] text-signal-nominal">WEB</div>
-                        </SettingsRow>
-                        <SettingsRow label="Runtime">
-                            <div className="font-mono text-[9px] text-text-data">Browser (Web Audio API)</div>
-                        </SettingsRow>
-                    </SettingsSection>
-                </div>
-            </div>
-        </div>
+                                {activeTab === 'AUDIO' && (
+                                    <motion.div
+                                        key="audio"
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: 10 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="flex flex-col gap-4"
+                                    >
+                                        <label className="text-[10px] text-text-data uppercase">Master Output Device</label>
+                                        <select
+                                            className="w-full bg-surface-idle border border-white/10 rounded-btn-sm p-3 text-xs text-text-primary focus:border-signal-nominal outline-none shadow-inner"
+                                            value={state.settings.audioOutputId}
+                                            onChange={(e) => dispatch({ type: 'SET_AUDIO_OUTPUT', deviceId: e.target.value })}
+                                        >
+                                            <option value="default">System Default</option>
+                                            {audioDevices.map(d => (
+                                                <option key={d.deviceId} value={d.deviceId}>{d.label || `Device ${d.deviceId.slice(0, 5)}...`}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[9px] text-text-data/50 mt-2">
+                                            Note: Audio Output Selection requires Chrome/Edge (Chromium 88+). On other browsers, use system settings.
+                                        </p>
+                                    </motion.div>
+                                )}
+
+                                {activeTab === 'MIDI' && (
+                                    <motion.div
+                                        key="midi"
+                                        initial={{ opacity: 0, x: 10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -10 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="flex flex-col gap-6"
+                                    >
+                                        <div className="bg-signal-nominal/10 border border-signal-nominal/20 p-3 rounded-btn-sm">
+                                            <p className="text-[9px] text-signal-nominal font-bold">
+                                                Click a function button below, then move a control on your hardware to map it.
+                                            </p>
+                                        </div>
+
+                                        {MAPPING_GROUPS.map(group => (
+                                            <div key={group.label}>
+                                                <h3 className="text-[9px] text-text-data font-bold mb-2 border-b border-white/5 pb-1">{group.label}</h3>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {group.actions.map(action => {
+                                                        const isMapped = !!state.settings.midiMappings[action.id];
+                                                        return (
+                                                            <button
+                                                                key={action.id}
+                                                                onClick={() => handleLearn(action.id)}
+                                                                className={`h-10 text-[9px] font-bold border rounded-btn-sm transition-all relative overflow-hidden
+                                                                    ${isMapped
+                                                                        ? 'bg-surface-active border-signal-nominal/30 text-text-primary hover:bg-white/10'
+                                                                        : 'bg-surface-idle border-white/10 text-text-data/50 hover:text-text-secondary'}`}
+                                                            >
+                                                                {action.label}
+                                                                {isMapped && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-signal-nominal shadow-[0_0_5px_currentColor]" />}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </motion.div>
+                                )}
+
+                                {activeTab === 'STEMS' && (
+                                    <motion.div
+                                        key="stems"
+                                        initial={{ opacity: 0, x: 10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -10 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="flex flex-col gap-4"
+                                    >
+                                        <input
+                                            ref={stemModelInputRef}
+                                            type="file"
+                                            accept=".onnx"
+                                            onChange={handleStemModelFile}
+                                            className="hidden"
+                                        />
+
+                                        <div className="bg-surface-idle border border-white/10 rounded-btn-sm p-4 flex flex-col gap-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-[10px] font-bold tracking-widest text-text-data uppercase">Current Stem Model</div>
+                                                    <div className="text-xs text-text-primary mt-1">
+                                                        {stemModelStatus?.available ? stemModelStatus.fileName : 'No local model installed'}
+                                                    </div>
+                                                </div>
+                                                <div className={`px-2 py-1 text-[9px] font-bold rounded-btn-sm border ${
+                                                    stemModelStatus?.available
+                                                        ? 'border-signal-nominal/30 text-signal-nominal bg-signal-nominal/10'
+                                                        : 'border-white/10 text-text-secondary bg-canvas'
+                                                }`}>
+                                                    {stemModelStatus?.available ? 'READY' : 'INACTIVE'}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3 text-[10px]">
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Source</div>
+                                                    <div className="text-text-primary">{stemModelStatus?.source ?? 'None'}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Input Shape</div>
+                                                    <div className="text-text-primary">{formatShape(stemModelStatus?.inputShape ?? [])}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Output Shape</div>
+                                                    <div className="text-text-primary">{formatShape(stemModelStatus?.outputShape ?? [])}</div>
+                                                </div>
+                                                <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
+                                                    <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Status</div>
+                                                    <div className="text-text-primary">Coming Soon</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-signal-nominal/10 border border-signal-nominal/20 p-3 rounded-btn-sm">
+                                            <p className="text-[9px] text-signal-nominal font-bold leading-relaxed">
+                                                AI-powered stem separation is coming soon to good.DJ web. EQ-based frequency filtering is available now.
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };
