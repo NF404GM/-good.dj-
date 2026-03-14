@@ -177,7 +177,7 @@ function AppContent() {
 
                         <div
                             data-boot="crossfader"
-                            className={`z-30 shrink-0 overflow-hidden transition-all duration-[350ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${currentView === AppView.LIBRARY ? 'max-h-0 pointer-events-none opacity-0' : 'h-20 max-h-20 border-b border-white/5 opacity-100'}`}
+                            className={`z-30 shrink-0 overflow-hidden transition-all duration-[350ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${currentView === AppView.LIBRARY ? 'max-h-0 pointer-events-none opacity-0' : 'h-10 max-h-10 border-b border-white/5 opacity-100'}`}
                         >
                             <Crossfader value={crossfader} onChange={(value) => dispatch({ type: 'SET_CROSSFADER', value })} />
                         </div>
