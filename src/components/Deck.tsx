@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { StemType, DeckState, DeckAction, StemModelStatus } from '../types';
-import { StemControl } from './StemControl';
+import { DeckState, DeckAction } from '../types';
 import { Waveform } from './Waveform';
 import { TrackOverview } from './TrackOverview';
 import { AudioEngine } from '../services/audio';
@@ -130,8 +129,8 @@ export const TechnicalKnob: React.FC<{
    Layout:
    1. Header: DECK badge | title+font | artist+font | remaining | BPM | Key | Pitch
    2. Waveform (100px)
-   3. Transport+Tabs row: [Play][CUE] | CUES LOOP STEMS | [SYNC]
-   4. Performance: hot cues (3x3) | loop beats (3x2) | stem faders (4 vertical)
+   3. Transport+Tabs row: [Play][CUE] | CUES LOOP | [SYNC]
+   4. Performance: hot cues (3x3) | loop beats (3x2)
    ═══════════════════════════════════════════ */
 
 interface DeckProps {
@@ -142,9 +141,9 @@ interface DeckProps {
 
 export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) => {
     const {
-        id, track, hasAudioBuffer, isPlaying, isLoading, progress,
-        pitch, pitchRange, stems, cuePoints, waveformData, level,
-        activeLoop, keyLock, keyShift, isSynced, stemMode, isSeparatingStems,
+        id, track, hasAudioBuffer, isPlaying, progress,
+        pitch, pitchRange, cuePoints, waveformData, level,
+        activeLoop, keyLock, keyShift, isSynced,
     } = deckState;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,21 +154,12 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     const [isDraggingPitch, setIsDraggingPitch] = useState(false);
     const [pressTimer, setPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
     const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'CUES' | 'LOOP' | 'STEMS'>('CUES');
-    const [stemModelStatus, setStemModelStatus] = useState<StemModelStatus | null>(null);
 
     const duration = track?.duration ?? 0;
     const loopRegion = activeLoop ? AudioEngine.getLoopBoundaries(id) : null;
     const canTransport = Boolean(track && hasAudioBuffer);
     const pitchPercent = pitch * pitchRange * 100;
     const bpmDisplay = track ? (track.bpm * (1 + (pitch * pitchRange))).toFixed(1) : '--.-';
-    const stemOrder = [StemType.LOW, StemType.BASS, StemType.MID, StemType.HIGH];
-    const stemConfig = {
-        [StemType.LOW]: { label: 'Drums', color: 'var(--stem-drums)' },
-        [StemType.BASS]: { label: 'Bass', color: 'var(--stem-bass)' },
-        [StemType.MID]: { label: 'Melody', color: 'var(--stem-vocals)' },
-        [StemType.HIGH]: { label: 'Vocals', color: 'var(--stem-harmonic)' },
-    } as const;
 
     const formatClock = (seconds: number) => {
         if (!Number.isFinite(seconds) || seconds <= 0) return { main: '0:00', sub: '.00' };
@@ -224,7 +214,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
         e.preventDefault(); e.stopPropagation(); setIsDragOver(false);
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
-            if (file.type.startsWith('audio/') || file.name.match(/\\.(mp3|wav|ogg|flac|m4a|aac)$/i)) {
+            if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|flac|m4a|aac)$/i)) {
                 dispatch({ type: 'LOAD_FILE', deckId: id, file });
             }
             return;
@@ -330,8 +320,13 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     <div className="font-sans text-[9px] text-text-secondary">Key</div>
                 </div>
 
-                {/* Pitch */}
-                <div className="shrink-0 text-right">
+                {/* Pitch — draggable to adjust pitch */}
+                <div
+                    className={`shrink-0 cursor-ns-resize select-none text-right ${isDraggingPitch ? 'brightness-125' : ''}`}
+                    onMouseDown={handlePitchMouseDown}
+                    onDoubleClick={() => dispatch({ type: 'SET_PITCH', deckId: id, value: 0 })}
+                    title="Drag vertically to adjust pitch. Shift for fine control. Double-click to reset."
+                >
                     <div className={`font-mono text-[14px] font-bold tracking-tight ${Math.abs(pitchPercent) > 0.01 ? 'text-signal-nominal' : 'text-text-primary'}`}>
                         {pitchPercent >= 0 ? '+' : ''}{pitchPercent.toFixed(1)}%
                     </div>
@@ -372,7 +367,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 onSeek={(value) => { if (track) dispatch({ type: 'SEEK_POSITION', deckId: id, value }); }}
             />
 
-            {/* ──── ROW 3: TRANSPORT + TABS (single row) ──── */}
+            {/* ──── ROW 3: TRANSPORT (single row) ──── */}
             <div className="flex h-[42px] shrink-0 items-center gap-3 border-b border-white/6 bg-black/20 px-3">
                 {/* Play/Pause circle button */}
                 <button
@@ -417,23 +412,15 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* Tab labels — CUES / LOOP / STEMS */}
-                {(['CUES', 'LOOP', 'STEMS'] as const).map((tab) => (
-                    <button
+                {/* CUES / LOOP labels */}
+                {(['CUES', 'LOOP'] as const).map((tab) => (
+                    <span
                         key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={[
-                            'relative px-2 py-1 font-sans text-[11px] font-bold uppercase tracking-[0.08em] transition-all duration-150',
-                            activeTab === tab
-                                ? 'text-text-primary'
-                                : 'text-text-secondary hover:text-text-primary',
-                        ].join(' ')}
+                        className="relative px-2 py-1 font-sans text-[11px] font-bold uppercase tracking-[0.08em] text-text-primary"
                     >
                         {tab}
-                        {activeTab === tab && (
-                            <span className="absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-text-primary" />
-                        )}
-                    </button>
+                        <span className="absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-text-primary" />
+                    </span>
                 ))}
 
                 {/* Spacer */}
@@ -456,11 +443,11 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 </button>
             </div>
 
-            {/* ──── ROW 4: PERFORMANCE AREA (all panels visible at once) ──── */}
+            {/* ──── ROW 4: PERFORMANCE AREA (cues + loops) ──── */}
             <div className="flex min-h-0 flex-1 border-t border-white/4">
 
                 {/* LEFT: Hot Cue Pads — 3x3 grid */}
-                <div className="flex w-[38%] shrink-0 flex-col border-r border-white/6 p-2.5">
+                <div className="flex flex-1 shrink-0 flex-col border-r border-white/6 p-2.5">
                     {/* CUE label row with color dots */}
                     <div className="mb-2 flex items-center gap-2">
                         <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
@@ -506,8 +493,14 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     </div>
                 </div>
 
-                {/* CENTER: Loop Beat Grid — 3x2 */}
-                <div className="flex flex-1 flex-col border-r border-white/6 p-2.5">
+                {/* RIGHT: Loop Beat Grid — 3x2 */}
+                <div className="flex flex-1 flex-col p-2.5">
+                    {/* LOOP label */}
+                    <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
+                            LOOP
+                        </span>
+                    </div>
                     <div className="grid flex-1 grid-cols-3 grid-rows-2 gap-1.5">
                         {LOOP_SIZES.concat([5, 6]).map((beats, idx) => {
                             const actualBeats = idx < 4 ? LOOP_SIZES[idx] : (idx === 4 ? 16 : 32);
@@ -528,35 +521,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                                     <div className="font-mono text-[16px] font-bold leading-none">{displayNum}</div>
                                     <div className="mt-0.5 font-sans text-[8px] uppercase text-text-secondary">Beat</div>
                                 </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* RIGHT: Stem Faders — 4 vertical bars */}
-                <div className="flex w-[26%] shrink-0 flex-col p-2.5">
-                    <div className="flex flex-1 gap-1.5">
-                        {stemOrder.map((type) => {
-                            const config = stemConfig[type];
-                            const stemState = stems[type];
-                            return (
-                                <div key={type} className="flex flex-1 flex-col items-center gap-1">
-                                    {/* Vertical fader bar */}
-                                    <div className="relative flex-1 w-full rounded-[3px] border border-white/[0.06] bg-black/30 overflow-hidden">
-                                        <div
-                                            className="absolute inset-x-0 bottom-0 rounded-b-[2px] transition-all duration-150"
-                                            style={{
-                                                height: `${stemState.volume * 100}%`,
-                                                backgroundColor: config.color,
-                                                opacity: stemState.active ? 0.7 : 0.2,
-                                            }}
-                                        />
-                                    </div>
-                                    {/* Label */}
-                                    <span className="font-sans text-[8px] font-bold uppercase text-text-secondary">
-                                        {config.label}
-                                    </span>
-                                </div>
                             );
                         })}
                     </div>
