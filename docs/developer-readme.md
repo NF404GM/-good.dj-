@@ -71,7 +71,7 @@ The `AudioEngineService` is a singleton class managing the raw `AudioContext`. I
 
 1. `SourceNode` (The MP3/WAV file buffer)
 2. `TrimNode` (Input Gain)
-3. **Stem Layer** (`bass`, `mid`, `high` BiquadFilters by default, with optional real Demucs stem playback in Electron when a local model is installed)
+3. **Stem Layer** (`bass`, `mid`, `high` BiquadFilters by default, with EQ-based frequency filtering (AI stem separation coming soon))
 4. `ColorFilter` (DJM-style single knob LowPass/HighPass filter)
 5. **Mixer EQ** (`highNode`, `midNode`, `lowNode` BiquadFilters)
 6. **Split Path**:
@@ -96,7 +96,7 @@ The UI is built with a strictly enforced monochrome palette ("Hardware Sand" `#d
 
 ## 7. Known Quirks, Hacks, and Considerations
 
-1. **Stem Separation is Conditional:** Without a local Demucs ONNX model in `resources/models`, the stem controls fall back to frequency-band filtering. In Electron, the "Stem Separation" action can switch a deck into real Demucs-based stem playback when the model is installed.
+1. **Stem Separation is Conditional:** Without a local Demucs ONNX model in `resources/models`, the stem controls fall back to frequency-band filtering. AI-powered stem separation is planned for a future web release.
 2. **Event Propagation:** When building complex layered buttons (like the `X` to delete a cue point sitting *inside* the Cue Pad button that triggers playback), strict `e.stopPropagation()` and `e.preventDefault()` are required to stop the browser from firing the parent's `onMouseDown` events.
 3. **Crossfader Math:** The crossfader employs equal power or linear panning math depending on implementation. Currently, it attenuates the `crossfaderNode.gain` of Deck A as it moves towards B.
 4. **File Inputs:** Tracks are loaded purely locally via a hidden `<input type="file" />` that the user is forced to click via a ref. This is because modern browsers strictly prohibit auto-playing or accessing local files without direct user interaction to prevent security/spam issues.

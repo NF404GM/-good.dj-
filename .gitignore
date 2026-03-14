@@ -1,51 +1,22 @@
-# User Data & Storage
-uploads/
-temp_uploads/
-db.json
-*.bak
-*.json.bak
-migrated_prompt_history/
-tmp/
-prisma/dev.db
-prisma/dev.db-journal
-
 # Environment Variables
 .env
 .env.local
 .env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
 *.env
 
 # Logs
 logs
 *.log
-*.lint-output
-lint_output*.txt
-tsc_output*.txt
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
-lerna-debug.log*
 
 # Dependencies
 node_modules
-.venv
 
 # Build outputs
 dist
 dist/
-dist-electron/
-dist-ssr
-electron-dist
-server-dist
-release
-resources/models/*.onnx
-resources/models/*.onnx.data
-resources/models/*.ort
-_tmp_demucs_onnx/
-_tmp_demucsv4.onnx
 
 # Editor directories and files
 .vscode/*

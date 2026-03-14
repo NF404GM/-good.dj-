@@ -2,17 +2,20 @@ import React, { useRef, useEffect } from 'react';
 
 import WaveformWorker from '../services/waveform-render.worker?worker';
 
-// 8 distinct hot cue colors — shared with TrackOverview
-const CUE_COLORS = [
-    '#ef4444', // 1 - Red
-    '#f97316', // 2 - Orange
-    '#eab308', // 3 - Yellow
-    '#22c55e', // 4 - Green
-    '#06b6d4', // 5 - Cyan
-    '#3b82f6', // 6 - Blue
-    '#8b5cf6', // 7 - Purple
-    '#ec4899', // 8 - Pink
-];
+// 8 hot cue colors — resolved from CSS tokens at runtime for canvas use
+function getCueColors(): string[] {
+    const style = getComputedStyle(document.documentElement);
+    return [
+        style.getPropertyValue('--color-cue-1').trim() || '#FF2D55',
+        style.getPropertyValue('--color-cue-2').trim() || '#FF7A00',
+        style.getPropertyValue('--color-cue-3').trim() || '#FFB800',
+        style.getPropertyValue('--color-cue-4').trim() || '#00E87A',
+        style.getPropertyValue('--color-cue-5').trim() || '#00C8FF',
+        style.getPropertyValue('--color-cue-6').trim() || '#3B82F6',
+        style.getPropertyValue('--color-cue-7').trim() || '#8B5CF6',
+        style.getPropertyValue('--color-cue-8').trim() || '#EC4899',
+    ];
+}
 
 interface WaveformProps {
   isPlaying: boolean;
@@ -51,6 +54,7 @@ export const Waveform: React.FC<WaveformProps> = ({ isPlaying, color, progress, 
           data,
           color,
           cuePoints,
+          cueColors: getCueColors(),
           loopRegion,
           progress,
           isPlaying
@@ -100,6 +104,7 @@ export const Waveform: React.FC<WaveformProps> = ({ isPlaying, color, progress, 
         data,
         color,
         cuePoints,
+        cueColors: getCueColors(),
         loopRegion
       });
     }

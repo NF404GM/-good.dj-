@@ -65,7 +65,7 @@ export class MidiService {
     async init() {
         if (!(navigator as any).requestMIDIAccess) return;
         try {
-            this.access = await (navigator as any).requestMIDIAccess();
+            this.access = await (navigator as any).requestMIDIAccess({ sysex: false });
             this.access.onstatechange = (e: any) => {
                 if (e.port.type !== 'input') return;
 
@@ -126,6 +126,23 @@ export class MidiService {
             // Fallback to default hardcoded map if strict dynamic map not found?
             // For now, let's keep it strictly dynamic to enforce the "Settings" flow.
         }
+    }
+
+    destroy() {
+        if (this.access) {
+            // Remove all input listeners
+            for (const input of this.access.inputs.values()) {
+                input.onmidimessage = null;
+            }
+            // Remove state change listener
+            this.access.onstatechange = null;
+            this.access = null;
+        }
+        // Clear all mappings
+        this.mappings.clear();
+        this.isLearning = false;
+        this.pendingActionId = null;
+        this.onLearnSuccess = undefined;
     }
 
     private dispatchMappedAction(actionId: string, value: number, rawValue: number) {

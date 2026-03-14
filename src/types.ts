@@ -1,247 +1,239 @@
-
+// good.DJ — Type Definitions
 
 export interface TrackData {
-    id: string;
     title: string;
     artist: string;
     bpm: number;
     key: string;
-    duration: number; // seconds
-    beats?: number[]; // Array of beat timestamps in seconds for quantized looping
-    filePath?: string;
+    duration: number;
+    waveformData?: number[];
+    genre?: string;
+    beats?: number[];
 }
 
 export interface LibraryTrack extends TrackData {
-    album: string;
-    genre: string;
-    rating: number; // 0-5
-    dateAdded: string;
-    analyzed: boolean;
-    storageKey?: number; // IndexedDB ID
-    fileBlob?: Blob; // For transient access or re-hydration
-    filePath?: string; // Optional backend path
+    id: string;
+    file?: File;
+    url?: string;
+    addedAt: number;
+    playCount: number;
+    rating: number;
+    lastPlayed?: number;
+    color?: string;
 }
 
 export interface Playlist {
     id: string;
     name: string;
     trackIds: string[];
+    createdAt: number;
 }
 
 export enum StemType {
-    LOW = 'LOW',
-    BASS = 'BASS',
-    MID = 'MID',
-    HIGH = 'HIGH',
+    VOCALS = 'vocals',
+    DRUMS = 'drums',
+    BASS = 'bass',
+    OTHER = 'other',
 }
 
 export type StemPlaybackMode = 'filters' | 'real';
 
 export interface StemSeparationResult {
-    drums: Float32Array;
-    bass: Float32Array;
-    other: Float32Array;
-    vocals: Float32Array;
-    sampleRate: number;
+    vocals: AudioBuffer;
+    drums: AudioBuffer;
+    bass: AudioBuffer;
+    other: AudioBuffer;
 }
 
 export interface StemModelStatus {
+    // Whether the ONNX model is present
     available: boolean;
-    source: 'environment' | 'user-installed' | 'bundled' | 'dev-resource' | null;
-    path: string | null;
-    fileName: string | null;
-    inputName: string | null;
-    outputName: string | null;
-    inputShape: Array<string | number | null | undefined>;
-    outputShape: Array<string | number | null | undefined>;
-    message: string;
+    // Whether stem separation is active for a deck
+    isProcessing: boolean;
+    // Progress percentage during separation
+    progress: number;
+    // Any error messages
+    error?: string;
+    // Model file size info
+    modelSize?: string;
+    modelPath?: string;
 }
-
-
 
 export enum EffectType {
-    REVERB = 'REVERB',
-    DELAY = 'DELAY',
-    ECHO = 'ECHO', // Simulated via Delay settings
-    GATER = 'GATER', // Simulated via Volume modulation (future)
+    REVERB = 'reverb',
+    DELAY = 'delay',
+    FILTER = 'filter',
+    FLANGER = 'flanger',
+    PHASER = 'phaser',
+    COMPRESSOR = 'compressor',
+    BITCRUSHER = 'bitcrusher',
+    WAHWAH = 'wahwah',
 }
-
-// --- AUDIO ENGINE TYPES ---
 
 export interface AudioDeck {
     source: AudioBufferSourceNode | null;
-    stretchNode: any | null; // For Signalsmith Stretch
-    isKeyLockEnabled: boolean;
-    isLooping: boolean;
-    loopStart: number; // Loop start time in seconds (0 if no loop)
-    loopEnd: number;   // Loop end time in seconds (0 if no loop)
-    volumeNode: GainNode; // Channel Volume
-    crossfaderNode: GainNode; // Crossfader Attenuation
-    trimNode: GainNode; // Input Gain
-    filters: {
-        high: BiquadFilterNode;
-        mid: BiquadFilterNode;
-        low: BiquadFilterNode;
+    buffer: AudioBuffer | null;
+    gainNode: GainNode;
+    crossfaderNode: GainNode;
+    analyser: AnalyserNode;
+    eqHigh: BiquadFilterNode;
+    eqMid: BiquadFilterNode;
+    eqLow: BiquadFilterNode;
+    filterNode: BiquadFilterNode;
+    stemNodes: {
+        vocals: GainNode;
+        drums: GainNode;
+        bass: GainNode;
+        other: GainNode;
     };
     stemFilters: {
-        bass: BiquadFilterNode;
-        mid: BiquadFilterNode;
-        high: BiquadFilterNode;
-        drumsKick: BiquadFilterNode;
-        drumsHigh: BiquadFilterNode;
+        vocals: BiquadFilterNode[];
+        drums: BiquadFilterNode[];
+        bass: BiquadFilterNode[];
+        other: BiquadFilterNode[];
     };
-    // FX Chain
-    fxNodes: {
-        dry: GainNode;
-        wet: GainNode;
-        delayInput: GainNode;
-        reverbInput: GainNode;
-        tunaReverb: any;
-        tunaDelay: any;
-    };
-    analyser: AnalyserNode;
-    pannerNode: StereoPannerNode | null;
-    buffer: AudioBuffer | null;
+    stemMode: StemPlaybackMode;
+    stemBuffers: StemSeparationResult | null;
+    fxSend: GainNode;
+    fxReturn: GainNode;
+    dryNode: GainNode;
+    trimNode: GainNode;
+    effects: Map<EffectType, any>;
+    effectEnabled: Map<EffectType, boolean>;
+    startTime: number;
+    pauseTime: number;
     isPlaying: boolean;
-    startTime: number; // Context time when playback started
-    pauseTime: number; // Offset within the buffer when paused
-    pitch: number;
-    cuePoint: number; // Stored Cue Point (in seconds)
-    gridOffset: number; // Seconds offset for the downbeat
-    // Color FX
-    colorFilter: BiquadFilterNode;
+    playbackRate: number;
+    keyLockEnabled: boolean;
+    pitchShiftNode: AudioWorkletNode | null;
+    originalBpm: number;
 }
 
 export interface AudioEngineState {
-    ctx: AudioContext;
-    masterGain: GainNode;
+    isInitialized: boolean;
+    masterGain: number;
+    crossfaderPosition: number;
+    sampleRate: number;
     decks: {
         A: AudioDeck;
         B: AudioDeck;
     };
 }
 
-// --- STATE MANAGEMENT TYPES ---
-
 export interface StemState {
-    active: boolean;
-    volume: number;
-    param: number;
+    vocals: number;
+    drums: number;
+    bass: number;
+    other: number;
 }
 
 export interface EqState {
-    trim: number;
     high: number;
     mid: number;
     low: number;
 }
 
 export interface FxState {
-    active: boolean;
-    activeType: EffectType;
-    wet: number;
-    knob1: number; // Generic Param 1 (e.g. Decay, Time)
-    knob2: number; // Generic Param 2 (e.g. Tone, Feedback)
+    type: EffectType;
+    enabled: boolean;
+    mix: number;
+    params: Record<string, number>;
 }
 
 export interface DeckState {
     id: string;
-    track: TrackData | null; // Nullable if no track loaded
-    hasAudioBuffer: boolean; // True only when audio data is decoded/loaded in engine
+    track: TrackData | null;
     isPlaying: boolean;
     isLoading: boolean;
     progress: number;
-    pitch: number; // -1 to 1 (Fader Position)
-    pitchRange: number; // e.g. 0.08 for 8%
-    level: number; // 0-1 RMS Level
-    stems: Record<StemType, StemState>;
+    volume: number;
+    channelVolume: number;
+    trim: number;
     eq: EqState;
-    fx: FxState;
-    cuePoints: (number | null)[];
-    waveformData: any[] | null;
-    activeLoop: number | null;
-    gridOffset: number;
-    keyLock: boolean;
-    keyShift: number; // Semitones (-12 to +12)
-    color: number; // 0 to 1 (0.5 is off)
-    channelVolume: number; // 0 to 1
-    isSynced: boolean;
+    filter: number;
+    stems: StemState;
     stemMode: StemPlaybackMode;
-    isSeparatingStems: boolean;
+    stemsLoading: boolean;
+    stemsLoaded: boolean;
+    bpm: number;
+    pitch: number;
+    keyLock: boolean;
+    cuePoints: (number | null)[];
+    loopIn: number | null;
+    loopOut: number | null;
+    isLooping: boolean;
+    fx: FxState[];
+    level: number;
+    waveformData: any[] | null;
+    beatGridOffset: number;
 }
 
 export interface MidiMapping {
-    id: string; // e.g. "DECK_A_PLAY"
-    note: number; // MIDI Note or CC number
     channel: number;
-    type: 'note' | 'cc';
+    cc: number;
+    action: string;
+    deckId?: string;
 }
 
 export interface SettingsState {
-    isOpen: boolean;
-    audioOutputId: string;
-    midiMappings: Record<string, MidiMapping>;
+    midiEnabled: boolean;
+    midiMappings: MidiMapping[];
+    audioOutput: string;
+    theme: 'dark' | 'light';
 }
 
 export interface LibraryState {
     tracks: LibraryTrack[];
     playlists: Playlist[];
-    isInitialized: boolean;
+    isLoading: boolean;
+    searchQuery: string;
 }
 
 export interface GlobalDjState {
-    activeDeckId: string | null;
-    crossfader: number; // 0 to 100
-    isRecording: boolean;
-    recordingDuration: number;
-    settings: SettingsState;
-    library: LibraryState;
     decks: {
         A: DeckState;
         B: DeckState;
     };
+    crossfader: number;
+    library: LibraryState;
+    settings: SettingsState;
+    view: AppView;
+    isRecording: boolean;
+    recordingDuration: number;
+    midiLearnTarget: string | null;
 }
-
-// --- MIDI TYPES ---
 
 export interface MidiDevice {
     id: string;
     name: string;
     manufacturer: string;
-    state: 'connected' | 'disconnected';
+    connected: boolean;
 }
 
 export type DeckAction =
+    | { type: 'LOAD_TRACK'; deckId: string; track: TrackData; file?: File }
     | { type: 'TOGGLE_PLAY'; deckId: string }
-    | { type: 'SET_PLAYING'; deckId: string; value: boolean }
-    | { type: 'SYNC_DECK'; deckId: string }
     | { type: 'SET_CUE'; deckId: string; index: number }
     | { type: 'TRIGGER_CUE'; deckId: string; index: number }
     | { type: 'DELETE_CUE'; deckId: string; index: number }
-    | { type: 'CUE_MASTER'; deckId: string }
-    | { type: 'LOOP_TRACK'; deckId: string; beats: number | null }
-    | { type: 'LOOP_HALVE'; deckId: string }
-    | { type: 'LOOP_DOUBLE'; deckId: string }
-    | { type: 'BEAT_JUMP'; deckId: string; beats: number }
-    | { type: 'SEEK_POSITION'; deckId: string; value: number }
-    | { type: 'SET_PITCH'; deckId: string; value: number }
-    | { type: 'SET_PITCH_RANGE'; deckId: string; value: number }
-    | { type: 'TOGGLE_KEY_LOCK'; deckId: string }
-    | { type: 'SET_KEY_SHIFT'; deckId: string; value: number }
-    | { type: 'SET_VOLUME'; deckId: string; stem: StemType; value: number }
-    | { type: 'TOGGLE_STEM'; deckId: string; stem: StemType }
-    | { type: 'SET_STEM_PARAM'; deckId: string; stem: StemType; value: number }
-    | { type: 'SET_EQ'; deckId: string; band: keyof EqState; value: number }
-    | { type: 'SET_COLOR_FILTER'; deckId: string; value: number }
-    | { type: 'TOGGLE_FX'; deckId: string }
-    | { type: 'SET_FX_WET'; deckId: string; value: number }
-    | { type: 'SET_FX_TYPE'; deckId: string; effectType: EffectType }
-    | { type: 'SET_FX_PARAM'; deckId: string; knob: 1 | 2; value: number }
-    | { type: 'LOAD_TRACK'; deckId: string; track: TrackData; hasAudioBuffer?: boolean }
-    | { type: 'LOAD_FILE'; deckId: string; file: File }
+    | { type: 'SET_EQ'; deckId: string; band: 'high' | 'mid' | 'low'; value: number }
+    | { type: 'SET_FILTER'; deckId: string; value: number }
+    | { type: 'SET_STEM_VOLUME'; deckId: string; stem: keyof StemState; value: number }
+    | { type: 'SET_STEM_MODE'; deckId: string; mode: StemPlaybackMode }
     | { type: 'SEPARATE_STEMS'; deckId: string }
-    | { type: 'EJECT_TRACK'; deckId: string }
-    | { type: 'DOUBLE_DECK'; deckId: string }
+    | { type: 'SET_VOLUME'; deckId: string; value: number }
+    | { type: 'SET_TRIM'; deckId: string; value: number }
+    | { type: 'SET_PITCH'; deckId: string; value: number }
+    | { type: 'TOGGLE_KEY_LOCK'; deckId: string }
+    | { type: 'TOGGLE_FX'; deckId: string; effectType: EffectType }
+    | { type: 'SET_FX_MIX'; deckId: string; effectType: EffectType; value: number }
+    | { type: 'SET_FX_PARAM'; deckId: string; effectType: EffectType; param: string; value: number }
+    | { type: 'SET_LOOP_IN'; deckId: string }
+    | { type: 'SET_LOOP_OUT'; deckId: string }
+    | { type: 'TOGGLE_LOOP'; deckId: string }
+    | { type: 'BEAT_JUMP'; deckId: string; beats: number }
+    | { type: 'NUDGE'; deckId: string; direction: 'forward' | 'backward' }
+    | { type: 'SEEK'; deckId: string; position: number }
     | { type: 'SET_LOADING'; deckId: string; isLoading: boolean }
     | { type: 'SET_PROGRESS'; deckId: string; value: number }
     | { type: 'SET_LEVEL'; deckId: string; level: number }
@@ -264,7 +256,8 @@ export type DeckAction =
     | { type: 'SET_CHANNEL_VOLUME'; deckId: string; value: number }
     | { type: 'SET_STEMS_LOADING'; deckId: string; value: boolean }
     | { type: 'STEMS_LOADED'; deckId: string }
-    | { type: 'UPDATE_TRACK_METADATA'; deckId: string; bpm: number; key: string };
+    | { type: 'UPDATE_TRACK_METADATA'; trackId: string; bpm?: number; key?: string; beats?: number[] }
+    | { type: 'LIBRARY_REMOVE_TRACK'; trackId: string };
 
 export interface ArchitectureFile {
     name: string;
@@ -277,60 +270,4 @@ export enum AppView {
     INTERFACE = 'INTERFACE',
     LIBRARY = 'LIBRARY',
     ARCHITECTURE = 'ARCHITECTURE',
-}
-
-// --- ELECTRON BRIDGE TYPES ---
-
-export interface LicenseStatus {
-    activated: boolean;
-    email?: string;
-    key?: string;
-    error?: string;
-}
-
-export interface BetterLibraryAPI {
-    getTracks: () => Promise<LibraryTrack[]>;
-    getTrackById: (id: string) => Promise<LibraryTrack | null>;
-    readTrackFile: (filePath: string) => Promise<Uint8Array>;
-    saveTrack: (track: LibraryTrack) => Promise<LibraryTrack>;
-    updateTrack: (id: string, updates: Partial<LibraryTrack>) => Promise<LibraryTrack>;
-    getPlaylists: () => Promise<any[]>;
-    savePlaylist: (name: string, id?: string) => Promise<any>;
-    addTracksToPlaylist: (playlistId: string, trackIds: string[]) => Promise<{ success: boolean }>;
-    deletePlaylist: (id: string) => Promise<{ success: boolean }>;
-    getRecordings: () => Promise<any[]>;
-}
-
-export interface BetterAudioAPI {
-    analyzeKey: (filePath: string) => Promise<string>;
-    saveRecording: (path: string, title: string, duration: number) => Promise<any>;
-}
-
-export interface GoodDJBridge {
-    license: {
-        verify: (key: string) => Promise<{ success: boolean; error?: string }>;
-        getStatus: () => Promise<LicenseStatus>;
-        clear: () => Promise<{ success: boolean }>;
-    };
-    library: BetterLibraryAPI;
-    audio: BetterAudioAPI;
-    stems: {
-        separate: (filePath: string) => Promise<StemSeparationResult>;
-        getStatus: () => Promise<StemModelStatus>;
-        installModel: (filePath: string) => Promise<StemModelStatus>;
-        removeInstalledModel: () => Promise<StemModelStatus>;
-        abort: () => Promise<{ aborted: true }>;
-        onProgress: (callback: (info: { filePath: string; pct: number }) => void) => () => void;
-    };
-    getVersion: () => Promise<string>;
-    getUploadsDir: () => Promise<string>;
-    platform: string;
-    onPlayerStatus: (callback: (state: any) => void) => () => void;
-    onDeviceUpdate: (callback: (data: { type: string, device: any }) => void) => () => void;
-}
-
-declare global {
-    interface Window {
-        gooddj?: GoodDJBridge;
-    }
 }

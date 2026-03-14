@@ -18,7 +18,7 @@ interface StemControlProps {
 }
 
 const STEM_ICONS: Record<StemType, React.ReactNode> = {
-  [StemType.LOW]: (
+  [StemType.VOCALS]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l-9.5 5.5v9L12 22l9.5-5.5v-9L12 2z" />
       <path d="M12 22V6.5" />
@@ -34,7 +34,7 @@ const STEM_ICONS: Record<StemType, React.ReactNode> = {
       <path d="M18 20v-6" />
     </svg>
   ),
-  [StemType.MID]: (
+  [StemType.DRUMS]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2v20" />
       <path d="M8 10v4" />
@@ -42,7 +42,7 @@ const STEM_ICONS: Record<StemType, React.ReactNode> = {
       <path d="M4 12h16" />
     </svg>
   ),
-  [StemType.HIGH]: (
+  [StemType.OTHER]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12h20" />
       <path d="M2 7h20" />
@@ -91,6 +91,10 @@ export const HorizontalBar: React.FC<{
           onDoubleClick={onDoubleClick}
           className="absolute inset-0 opacity-0 cursor-col-resize active:cursor-grabbing"
           title={label}
+          aria-label={label || 'Parameter'}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(value * 100)}
         />
       </div>
       {label && (
@@ -164,6 +168,10 @@ export const VerticalFader: React.FC<{
           }}
           onDoubleClick={onDoubleClick}
           className="absolute inset-0 w-full h-full opacity-0 cursor-ns-resize appearance-slider-vertical z-20"
+          aria-label={label ? `${label} Volume` : 'Volume'}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(value * 100)}
         />
       </div>
       {label && <span className="text-[6.5px] font-mono font-bold text-text-secondary mt-1 opacity-60 group-hover:opacity-100 transition-opacity uppercase tracking-[0.15em]">{label}</span>}
@@ -244,6 +252,8 @@ export const StemControl: React.FC<StemControlProps> = ({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.9, y: 1 }}
           onClick={onToggle}
+          aria-label={`${isActive ? 'Mute' : 'Unmute'} ${label}`}
+          aria-pressed={isActive}
           className="w-full h-4 flex flex-col items-center justify-center border transition-all duration-100 relative overflow-hidden rounded-btn-sm
                 bg-canvas border-white/5 opacity-80 hover:opacity-100
                 group-data-[active=true]:opacity-100 group-data-[active=true]:border-white/20 group-data-[active=true]:shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"

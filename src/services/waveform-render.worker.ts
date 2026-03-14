@@ -13,6 +13,7 @@ interface RenderState {
     isPlaying: boolean;
     color: string;
     cuePoints: (number | null)[];
+    cueColors: string[];
     loopRegion: { start: number; end: number } | null;
     width: number;
     height: number;
@@ -23,8 +24,9 @@ const state: RenderState = {
     data: null,
     progress: 0,
     isPlaying: false,
-    color: '#3b82f6',
+    color: '#00C8FF',
     cuePoints: [],
+    cueColors: [],
     loopRegion: null,
     width: 300,
     height: 100,
@@ -46,6 +48,7 @@ self.onmessage = (e: MessageEvent) => {
             if (msg.data !== undefined) state.data = msg.data;
             if (msg.color !== undefined) state.color = msg.color;
             if (msg.cuePoints !== undefined) state.cuePoints = msg.cuePoints;
+            if (msg.cueColors !== undefined) state.cueColors = msg.cueColors;
             if (msg.loopRegion !== undefined) state.loopRegion = msg.loopRegion;
             if (msg.progress !== undefined) state.progress = msg.progress;
             if (msg.isPlaying !== undefined) state.isPlaying = msg.isPlaying;
@@ -76,12 +79,12 @@ function render() {
     const centerX = w / 2;
 
     const themeActiveColor = color || '#3b82f6';
-    const themeIdleColor = '#1a1a1a';
-    const playheadColor = '#ffffff';
+    const themeIdleColor = '#161618'; // --color-panel
+    const playheadColor = '#F0F0F4'; // --color-white
 
-    const CUE_COLORS = [
-        '#ef4444', '#f97316', '#eab308', '#22c55e',
-        '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'
+    const CUE_COLORS = state.cueColors || [
+        '#FF2D55', '#FF7A00', '#FFB800', '#00E87A',
+        '#00C8FF', '#3B82F6', '#8B5CF6', '#EC4899'
     ];
 
     ctx.clearRect(0, 0, w, h);

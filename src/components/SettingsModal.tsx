@@ -24,88 +24,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
         }
     }, [activeTab]);
 
-    useEffect(() => {
-        if (!state.settings.isOpen || !window.gooddj?.stems?.getStatus) {
-            return;
-        }
-
-        let active = true;
-        window.gooddj.stems.getStatus()
-            .then((status) => {
-                if (active) {
-                    setStemModelStatus(status);
-                    setStemModelError(null);
-                }
-            })
-            .catch((error) => {
-                if (active) {
-                    setStemModelError(error instanceof Error ? error.message : String(error));
-                }
-            });
-
-        return () => {
-            active = false;
-        };
-    }, [state.settings.isOpen, activeTab]);
+    // Stem model status check removed — AI stems not available in web mode
 
     const handleLearn = (actionId: string) => {
         dispatch({ type: 'LEARN_MIDI', actionId });
     };
 
-    const syncStemModelStatus = async () => {
-        if (!window.gooddj?.stems?.getStatus) {
-            return;
-        }
-
-        const status = await window.gooddj.stems.getStatus();
-        setStemModelStatus(status);
-        setStemModelError(null);
-        window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
-    };
-
-    const handleStemModelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        const filePath = (file as any)?.path as string | undefined;
-
-        if (!filePath || !window.gooddj?.stems?.installModel) {
-            return;
-        }
-
-        setIsInstallingStemModel(true);
-        setStemModelError(null);
-
-        try {
-            const status = await window.gooddj.stems.installModel(filePath);
-            setStemModelStatus(status);
-            window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
-        } catch (error) {
-            setStemModelError(error instanceof Error ? error.message : String(error));
-        } finally {
-            setIsInstallingStemModel(false);
-            if (e.target) {
-                e.target.value = '';
-            }
-        }
-    };
-
-    const handleRemoveStemModel = async () => {
-        if (!window.gooddj?.stems?.removeInstalledModel) {
-            return;
-        }
-
-        setIsRemovingStemModel(true);
-        setStemModelError(null);
-
-        try {
-            const status = await window.gooddj.stems.removeInstalledModel();
-            setStemModelStatus(status);
-            window.dispatchEvent(new CustomEvent('gooddj:stem-model-status-changed'));
-        } catch (error) {
-            setStemModelError(error instanceof Error ? error.message : String(error));
-        } finally {
-            setIsRemovingStemModel(false);
-        }
-    };
+    // Stem model install/remove handlers removed — AI stems not available in web mode
 
     const formatShape = (shape: Array<string | number | null | undefined>) =>
         shape.length > 0 ? shape.map((part) => part ?? '?').join(' x ') : 'Unknown';
@@ -182,6 +107,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
                 >
                     <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Settings"
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -357,66 +285,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ state, dispatch })
                                                 </div>
                                                 <div className="bg-canvas border border-white/5 rounded-btn-sm p-3">
                                                     <div className="text-text-data uppercase tracking-widest text-[9px] mb-1">Status</div>
-                                                    <div className="text-text-primary">{stemModelStatus?.message ?? 'Electron-only feature'}</div>
+                                                    <div className="text-text-primary">Coming Soon</div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="bg-signal-nominal/10 border border-signal-nominal/20 p-3 rounded-btn-sm">
                                             <p className="text-[9px] text-signal-nominal font-bold leading-relaxed">
-                                                This project can bundle a provided stem model for free noncommercial releases, but the default production build still keeps model bundling opt-in.
+                                                AI-powered stem separation is coming soon to good.DJ web. EQ-based frequency filtering is available now.
                                             </p>
                                         </div>
-
-                                        <div className="bg-[#3b0b0b] border border-[#7f1d1d] p-3 rounded-btn-sm">
-                                            <p className="text-[9px] text-[#fecaca] leading-relaxed">
-                                                Keep attribution with any bundled-model giveaway. Do not reuse that same release path later for paid, sponsored, or monetized distribution without re-checking the model rights.
-                                            </p>
-                                        </div>
-
-                                        {stemModelError && (
-                                            <div className="bg-[#3b0b0b] border border-[#7f1d1d] rounded-btn-sm p-3 text-[9px] text-[#fecaca]">
-                                                {stemModelError}
-                                            </div>
-                                        )}
-
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => stemModelInputRef.current?.click()}
-                                                disabled={!window.gooddj?.stems || isInstallingStemModel}
-                                                className={`flex-1 py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
-                                                    !window.gooddj?.stems || isInstallingStemModel
-                                                        ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
-                                                        : 'bg-surface-active border-signal-nominal/30 text-text-primary hover:bg-white/10'
-                                                }`}
-                                            >
-                                                {isInstallingStemModel ? 'INSTALLING...' : 'INSTALL LOCAL ONNX MODEL'}
-                                            </button>
-
-                                            <button
-                                                onClick={() => void syncStemModelStatus()}
-                                                disabled={!window.gooddj?.stems}
-                                                className={`px-4 py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
-                                                    !window.gooddj?.stems
-                                                        ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
-                                                        : 'bg-canvas border-white/10 text-text-primary hover:bg-white/5'
-                                                }`}
-                                            >
-                                                REFRESH
-                                            </button>
-                                        </div>
-
-                                        <button
-                                            onClick={() => void handleRemoveStemModel()}
-                                            disabled={!window.gooddj?.stems || !stemModelStatus?.available || stemModelStatus.source !== 'user-installed' || isRemovingStemModel}
-                                            className={`py-3 text-[10px] font-bold tracking-widest rounded-btn-sm border transition-all ${
-                                                !window.gooddj?.stems || !stemModelStatus?.available || stemModelStatus.source !== 'user-installed' || isRemovingStemModel
-                                                    ? 'bg-surface-idle border-white/10 text-text-secondary cursor-not-allowed'
-                                                    : 'bg-canvas border-[#7f1d1d] text-[#fecaca] hover:bg-[#3b0b0b]'
-                                            }`}
-                                        >
-                                            {isRemovingStemModel ? 'REMOVING...' : 'REMOVE USER-INSTALLED MODEL'}
-                                        </button>
                                     </motion.div>
                                 )}
                             </AnimatePresence>

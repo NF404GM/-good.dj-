@@ -10,17 +10,20 @@ interface TrackOverviewProps {
     onSeek: (position: number) => void;
 }
 
-// 8 distinct hot cue colors matching DJ hardware standards
-const CUE_COLORS = [
-    '#ef4444', // 1 - Red
-    '#f97316', // 2 - Orange
-    '#eab308', // 3 - Yellow
-    '#22c55e', // 4 - Green
-    '#06b6d4', // 5 - Cyan
-    '#3b82f6', // 6 - Blue
-    '#8b5cf6', // 7 - Purple
-    '#ec4899', // 8 - Pink
-];
+// 8 hot cue colors — resolved from CSS tokens at runtime for canvas use
+function getCueColors(): string[] {
+    const style = getComputedStyle(document.documentElement);
+    return [
+        style.getPropertyValue('--color-cue-1').trim() || '#FF2D55',
+        style.getPropertyValue('--color-cue-2').trim() || '#FF7A00',
+        style.getPropertyValue('--color-cue-3').trim() || '#FFB800',
+        style.getPropertyValue('--color-cue-4').trim() || '#00E87A',
+        style.getPropertyValue('--color-cue-5').trim() || '#00C8FF',
+        style.getPropertyValue('--color-cue-6').trim() || '#3B82F6',
+        style.getPropertyValue('--color-cue-7').trim() || '#8B5CF6',
+        style.getPropertyValue('--color-cue-8').trim() || '#EC4899',
+    ];
+}
 
 export const TrackOverview: React.FC<TrackOverviewProps> = ({ data, progress, color, loopRegion, cuePoints, duration, onSeek }) => {
     const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,7 +54,7 @@ export const TrackOverview: React.FC<TrackOverviewProps> = ({ data, progress, co
         ctx.clearRect(0, 0, width, height);
 
         // Background
-        ctx.fillStyle = '#0a0a0a'; // Ultra-deep matte for contrast
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-void').trim() || '#0E0E10';
         ctx.fillRect(0, 0, width, height);
 
         const isSpectral = data[0] !== undefined && typeof data[0] !== 'number';
@@ -75,21 +78,21 @@ export const TrackOverview: React.FC<TrackOverviewProps> = ({ data, progress, co
                 const centerY = height / 2;
 
                 // Lows - Clipping Red (§7.4)
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+                ctx.fillStyle = 'rgba(255, 59, 59, 0.8)'; // --color-red
                 ctx.fillRect(x, centerY - hL, 1, hL * 2);
 
-                // Mids - Nominal Green (§7.4)
-                ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
+                // Mids - Green (--color-green)
+                ctx.fillStyle = 'rgba(0, 232, 122, 0.8)';
                 ctx.fillRect(x, centerY - hM, 1, hM * 2);
 
-                // Highs - Sync Blue (§7.4)
-                ctx.fillStyle = 'rgba(59, 130, 246, 0.8)';
+                // Highs - Cyan (--color-cyan)
+                ctx.fillStyle = 'rgba(0, 200, 255, 0.8)';
                 ctx.fillRect(x, centerY - hH, 1, hH * 2);
             }
             ctx.globalCompositeOperation = 'source-over';
         } else {
             // Fallback Mono Rendering
-            ctx.fillStyle = 'rgba(191, 183, 173, 0.4)';
+            ctx.fillStyle = 'rgba(90, 90, 102, 0.6)'; // --color-dim based
             for (let i = 0; i < width; i++) {
                 const dataIdx = Math.floor((i / width) * data.length);
                 const val = data[dataIdx] || 0;
@@ -183,7 +186,8 @@ export const TrackOverview: React.FC<TrackOverviewProps> = ({ data, progress, co
             {cuePoints && duration && duration > 0 && cuePoints.map((cue, idx) => {
                 if (cue === null) return null;
                 const pct = cue * 100; // cuePoints are already 0-1 progress values
-                const cueColor = CUE_COLORS[idx] || '#ffffff';
+                const cueColors = getCueColors();
+                const cueColor = cueColors[idx] || '#F0F0F4';
                 return (
                     <div key={idx} className="absolute top-0 z-[8] pointer-events-none" style={{ left: `${pct}%`, transform: 'translateX(-50%)' }}>
                         {/* Triangle marker */}

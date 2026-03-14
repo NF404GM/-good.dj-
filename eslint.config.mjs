@@ -5,13 +5,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
-      'electron-dist/**',
-      'server-dist/**',
-      'server/dist/**',
       'node_modules/**',
-      'release/**',
-      'uploads/**',
-      'temp_uploads/**',
       'docs/**',
     ],
   },
