@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { DeckState, DeckAction } from '../types';
+import { DeckState, DeckAction, EffectType } from '../types';
 import { Waveform } from './Waveform';
 import { TrackOverview } from './TrackOverview';
 import { AudioEngine } from '../services/audio';
@@ -16,7 +16,7 @@ const CUE_COLORS = [
     'var(--color-cue-8)',
 ];
 
-const LOOP_SIZES = [1, 2, 4, 8];
+const LOOP_SIZES = [1, 2, 4, 8, 16, 32];
 
 /* ═══════════════════════════════════════════
    SHARED SUB-COMPONENTS
@@ -125,12 +125,91 @@ export const TechnicalKnob: React.FC<{
 };
 
 /* ═══════════════════════════════════════════
-   DECK COMPONENT — matches reference mockup
+   PERFORMANCE TOOLS — Beat Jump Button
+   ═══════════════════════════════════════════ */
+const JumpButton: React.FC<{
+    label: string;
+    beats: number;
+    direction: 'back' | 'forward';
+    disabled: boolean;
+    dispatch: (action: DeckAction) => void;
+    deckId: string;
+}> = ({ label, beats, direction, disabled, dispatch, deckId }) => (
+    <button
+        className={[
+            'flex flex-1 flex-col items-center justify-center rounded-[3px] border py-1 transition-all duration-150',
+            disabled
+                ? 'cursor-not-allowed border-white/[0.05] text-text-secondary/30'
+                : 'border-white/[0.08] bg-black/20 text-text-secondary hover:border-white/20 hover:bg-white/[0.05] hover:text-text-primary active:scale-95',
+        ].join(' ')}
+        disabled={disabled}
+        onClick={() =>
+            dispatch({
+                type: direction === 'back' ? 'BEAT_JUMP_BACK' : 'BEAT_JUMP_FORWARD',
+                deckId,
+                beats,
+            } as DeckAction)
+        }
+        title={`${direction === 'back' ? '←' : '→'} ${beats} beat${beats !== 1 ? 's' : ''}`}
+    >
+        <span className="font-mono text-[11px] font-bold leading-none">{label}</span>
+    </button>
+);
+
+/* ═══════════════════════════════════════════
+   PERFORMANCE TOOLS — FX Toggle Button
+   ═══════════════════════════════════════════ */
+const FxButton: React.FC<{
+    label: string;
+    effectType: EffectType;
+    isActive: boolean;
+    disabled: boolean;
+    color: string;
+    dispatch: (action: DeckAction) => void;
+    deckId: string;
+}> = ({ label, effectType, isActive, disabled, color, dispatch, deckId }) => (
+    <button
+        className={[
+            'flex flex-1 flex-col items-center justify-center gap-[3px] rounded-[3px] border py-1 transition-all duration-150',
+            disabled
+                ? 'cursor-not-allowed border-white/[0.05] text-text-secondary/30'
+                : isActive
+                    ? 'border-white/20 bg-white/[0.07] text-text-primary'
+                    : 'border-white/[0.08] bg-black/20 text-text-secondary hover:border-white/15 hover:bg-white/[0.04] hover:text-text-primary',
+        ].join(' ')}
+        disabled={disabled}
+        onClick={() =>
+            dispatch({
+                type: 'TOGGLE_EFFECT',
+                deckId,
+                effectType,
+            } as DeckAction)
+        }
+        title={`Toggle ${label}`}
+    >
+        {/* LED dot */}
+        <div
+            className="h-[5px] w-[5px] rounded-full transition-all duration-150"
+            style={{
+                backgroundColor: isActive && !disabled ? color : 'rgba(255,255,255,0.12)',
+                boxShadow: isActive && !disabled ? `0 0 5px ${color}80` : 'none',
+            }}
+        />
+        <span className="font-mono text-[10px] font-bold uppercase leading-none tracking-wider">{label}</span>
+    </button>
+);
+
+/* ═══════════════════════════════════════════
+   DECK COMPONENT
    Layout:
-   1. Header: DECK badge | title+font | artist+font | remaining | BPM | Key | Pitch
+   1. Header: DECK badge | title | artist | remaining | BPM | Key | Pitch
    2. Waveform (100px)
-   3. Transport+Tabs row: [Play][CUE] | CUES LOOP | [SYNC]
-   4. Performance: hot cues (3x3) | loop beats (3x2)
+   3. Track overview mini bar
+   4. Transport row: [Play][CUE] | CUES LOOP | [SYNC]
+   5. Performance area (flex-1):
+      LEFT  — Hot Cue Pads (3×3)
+      CENTER — Beat Jump (2×2 grid)
+      RIGHT — Loop + FX controls
    ═══════════════════════════════════════════ */
 
 interface DeckProps {
@@ -144,6 +223,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
         id, track, hasAudioBuffer, isPlaying, progress,
         pitch, pitchRange, cuePoints, waveformData, level,
         activeLoop, keyLock, keyShift, isSynced,
+        fx,
     } = deckState;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +241,11 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     const pitchPercent = pitch * pitchRange * 100;
     const bpmDisplay = track ? (track.bpm * (1 + (pitch * pitchRange))).toFixed(1) : '--.-';
 
+    // Resolve active FX states — fx map may be undefined in older state shapes
+    const isReverbOn = fx?.get?.(EffectType.REVERB)?.enabled ?? false;
+    const isDelayOn  = fx?.get?.(EffectType.DELAY)?.enabled ?? false;
+    const isFilterOn = fx?.get?.(EffectType.FILTER)?.enabled ?? false;
+
     const formatClock = (seconds: number) => {
         if (!Number.isFinite(seconds) || seconds <= 0) return { main: '0:00', sub: '.00' };
         const minutes = Math.floor(seconds / 60);
@@ -175,7 +260,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     const remainingTime = formatClock(duration * (1 - progress));
     const openFilePicker = () => fileInputRef.current?.click();
 
-    // Pitch drag handlers
+    // Pitch drag
     const handlePitchMouseDown = (e: React.MouseEvent) => {
         if (!track) return;
         setIsDraggingPitch(true);
@@ -256,7 +341,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
     };
 
     /* ═══════════════════════════════════════════
-       DECK RENDER — matching reference mockup
+       RENDER
        ═══════════════════════════════════════════ */
     return (
         <div
@@ -269,14 +354,12 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
 
             {/* ──── ROW 1: HEADER ──── */}
             <div className="flex h-[52px] shrink-0 items-center gap-4 border-b border-white/6 bg-black/25 px-4">
-                {/* DECK badge */}
                 <div className="shrink-0 rounded-[3px] border border-white/12 bg-black/40 px-3 py-1.5">
                     <span className="font-sans text-[13px] font-extrabold uppercase tracking-[0.08em] text-text-primary">
                         Deck {id}
                     </span>
                 </div>
 
-                {/* Track title + font info */}
                 <div className="min-w-0 flex-1">
                     <div className="truncate font-sans text-[14px] font-bold text-text-primary">
                         {track?.title || 'No track loaded'}
@@ -286,7 +369,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     </div>
                 </div>
 
-                {/* Artist + font info */}
                 <div className="min-w-0">
                     <div className="font-sans text-[14px] text-text-primary">
                         {track?.artist || ''}
@@ -296,7 +378,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     </div>
                 </div>
 
-                {/* Stats: Remaining */}
                 <div className="shrink-0 text-right">
                     <div className="font-mono text-[14px] font-bold tracking-tight text-text-primary">
                         {remainingTime.main}<span className="text-[10px] text-text-secondary">{remainingTime.sub}</span>
@@ -304,7 +385,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     <div className="font-sans text-[9px] text-text-secondary">Remaining</div>
                 </div>
 
-                {/* BPM */}
                 <div className="shrink-0 text-right">
                     <div className={`font-mono text-[14px] font-bold tracking-tight ${isSynced ? 'text-signal-nominal' : 'text-text-primary'}`}>
                         {bpmDisplay}
@@ -312,7 +392,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     <div className="font-sans text-[9px] text-text-secondary">BPM</div>
                 </div>
 
-                {/* Key */}
                 <div className="shrink-0 text-right">
                     <div className={`font-mono text-[14px] font-bold tracking-tight ${keyLock ? 'text-signal-nominal' : 'text-text-primary'}`}>
                         {track ? `${track.key}${keyShift !== 0 ? `${keyShift > 0 ? '+' : ''}${keyShift}` : ''}` : '--'}
@@ -320,7 +399,6 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     <div className="font-sans text-[9px] text-text-secondary">Key</div>
                 </div>
 
-                {/* Pitch — draggable to adjust pitch */}
                 <div
                     className={`shrink-0 cursor-ns-resize select-none text-right ${isDraggingPitch ? 'brightness-125' : ''}`}
                     onMouseDown={handlePitchMouseDown}
@@ -334,7 +412,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 </div>
             </div>
 
-            {/* ──── ROW 2: WAVEFORM (100px) ──── */}
+            {/* ──── ROW 2: WAVEFORM ──── */}
             <div className="relative h-[100px] shrink-0 border-b border-white/6 bg-[#0a0a0a]">
                 <Waveform
                     key={`${id}-${track?.id || 'none'}`}
@@ -367,9 +445,9 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 onSeek={(value) => { if (track) dispatch({ type: 'SEEK_POSITION', deckId: id, value }); }}
             />
 
-            {/* ──── ROW 3: TRANSPORT (single row) ──── */}
+            {/* ──── ROW 3: TRANSPORT ──── */}
             <div className="flex h-[42px] shrink-0 items-center gap-3 border-b border-white/6 bg-black/20 px-3">
-                {/* Play/Pause circle button */}
+                {/* Play/Pause */}
                 <button
                     className={[
                         'flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150',
@@ -395,7 +473,7 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     )}
                 </button>
 
-                {/* CUE button */}
+                {/* CUE */}
                 <button
                     className={[
                         'flex h-[30px] shrink-0 items-center justify-center rounded-[4px] border px-4 font-sans text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-150',
@@ -409,10 +487,9 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     CUE
                 </button>
 
-                {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* CUES / LOOP labels */}
+                {/* Mode labels: CUES + LOOP only (stems removed) */}
                 {(['CUES', 'LOOP'] as const).map((tab) => (
                     <span
                         key={tab}
@@ -423,10 +500,9 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     </span>
                 ))}
 
-                {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* SYNC button */}
+                {/* SYNC */}
                 <button
                     className={[
                         'flex h-[30px] shrink-0 items-center justify-center rounded-[4px] border px-4 font-sans text-[11px] font-bold uppercase tracking-[0.1em] transition-all duration-150',
@@ -443,25 +519,27 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                 </button>
             </div>
 
-            {/* ──── ROW 4: PERFORMANCE AREA (cues + loops) ──── */}
+            {/* ──── ROW 4: PERFORMANCE AREA ──── */}
+            {/*
+                Three-column layout replacing the old cues+stems split:
+                  LEFT   — 8 Hot Cue Pads (3×3 grid, pad 9 empty)
+                  CENTER — Beat Jump (4 buttons: ◀4 ◀1 ▶1 ▶4) + Loop size grid
+                  RIGHT  — FX toggles (REVERB, DELAY, FILTER) + Loop controls (½, IN/OUT, 2×)
+            */}
             <div className="flex min-h-0 flex-1 border-t border-white/4">
 
-                {/* LEFT: Hot Cue Pads — 3x3 grid */}
-                <div className="flex flex-1 shrink-0 flex-col border-r border-white/6 p-2.5">
-                    {/* CUE label row with color dots */}
+                {/* ── LEFT: Hot Cue Pads ── */}
+                <div className="flex w-[38%] shrink-0 flex-col border-r border-white/6 p-2.5">
                     <div className="mb-2 flex items-center gap-2">
                         <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
                             CUE
                         </span>
-                        {/* Color indicator dots */}
                         <div className="flex gap-1">
                             {[0, 1, 2].map((i) => (
                                 <div key={i} className="h-2 w-2 rounded-full" style={{ backgroundColor: cuePoints[i] !== null ? CUE_COLORS[i] : 'rgba(255,255,255,0.08)' }} />
                             ))}
                         </div>
                     </div>
-
-                    {/* 3x3 cue pad grid */}
                     <div className="grid flex-1 grid-cols-3 grid-rows-3 gap-1.5">
                         {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
                             if (index >= 8) {
@@ -493,36 +571,169 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
                     </div>
                 </div>
 
-                {/* RIGHT: Loop Beat Grid — 3x2 */}
-                <div className="flex flex-1 flex-col p-2.5">
-                    {/* LOOP label */}
+                {/* ── CENTER: Beat Jump + Loop Grid ── */}
+                <div className="flex w-[32%] flex-col border-r border-white/6 p-2.5">
+                    {/* Section label */}
                     <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
+                            JUMP
+                        </span>
+                    </div>
+
+                    {/* Beat jump row */}
+                    <div className="mb-2 flex gap-1.5">
+                        <JumpButton label="◀4" beats={4} direction="back"    disabled={!canTransport} dispatch={dispatch} deckId={id} />
+                        <JumpButton label="◀1" beats={1} direction="back"    disabled={!canTransport} dispatch={dispatch} deckId={id} />
+                        <JumpButton label="▶1" beats={1} direction="forward" disabled={!canTransport} dispatch={dispatch} deckId={id} />
+                        <JumpButton label="▶4" beats={4} direction="forward" disabled={!canTransport} dispatch={dispatch} deckId={id} />
+                    </div>
+
+                    {/* Loop size grid (2×3) */}
+                    <div className="mb-1.5 flex items-center gap-2">
                         <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
                             LOOP
                         </span>
                     </div>
                     <div className="grid flex-1 grid-cols-3 grid-rows-2 gap-1.5">
-                        {LOOP_SIZES.concat([5, 6]).map((beats, idx) => {
-                            const actualBeats = idx < 4 ? LOOP_SIZES[idx] : (idx === 4 ? 16 : 32);
-                            const displayNum = idx + 1;
-                            const selected = activeLoop === actualBeats;
+                        {LOOP_SIZES.map((beats) => {
+                            const label = beats < 1 ? `1/${1 / beats}` : `${beats}`;
+                            const selected = activeLoop === beats;
                             return (
                                 <button
-                                    key={idx}
+                                    key={beats}
                                     className={[
-                                        'flex flex-col items-center justify-center rounded-[3px] border transition-all',
+                                        'flex flex-col items-center justify-center rounded-[3px] border transition-all duration-150',
                                         selected
                                             ? 'border-signal-nominal/30 bg-signal-nominal/12 text-text-primary'
                                             : 'border-white/[0.06] bg-black/20 text-text-secondary hover:border-white/12 hover:text-text-primary',
+                                        !canTransport ? 'cursor-not-allowed opacity-40' : '',
                                     ].join(' ')}
-                                    onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats: actualBeats })}
+                                    onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats })}
                                     disabled={!canTransport}
+                                    aria-label={`Loop ${label} beats`}
                                 >
-                                    <div className="font-mono text-[16px] font-bold leading-none">{displayNum}</div>
-                                    <div className="mt-0.5 font-sans text-[8px] uppercase text-text-secondary">Beat</div>
+                                    <div className="font-mono text-[14px] font-bold leading-none">{label}</div>
+                                    <div className="mt-0.5 font-sans text-[8px] uppercase text-text-secondary">bar{beats !== 1 ? 's' : ''}</div>
                                 </button>
                             );
                         })}
+                    </div>
+                </div>
+
+                {/* ── RIGHT: Loop Controls + FX ── */}
+                <div className="flex flex-1 flex-col p-2.5">
+
+                    {/* Loop in/out controls */}
+                    <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
+                            CTRL
+                        </span>
+                    </div>
+                    <div className="mb-2 flex gap-1.5">
+                        {/* Loop halve */}
+                        <button
+                            className={[
+                                'flex flex-1 items-center justify-center rounded-[3px] border py-1 font-mono text-[11px] font-bold transition-all duration-150',
+                                canTransport && activeLoop
+                                    ? 'border-white/15 bg-white/[0.04] text-text-primary hover:bg-white/[0.08] active:scale-95'
+                                    : 'cursor-not-allowed border-white/[0.05] text-text-secondary/30',
+                            ].join(' ')}
+                            disabled={!canTransport || !activeLoop}
+                            onClick={() => dispatch({ type: 'LOOP_HALVE', deckId: id } as DeckAction)}
+                            title="Halve loop length"
+                        >
+                            ½
+                        </button>
+                        {/* Loop in/out toggle */}
+                        <button
+                            className={[
+                                'flex flex-1 items-center justify-center rounded-[3px] border py-1 font-sans text-[9px] font-bold uppercase tracking-wider transition-all duration-150',
+                                canTransport
+                                    ? activeLoop
+                                        ? 'border-signal-nominal/40 bg-signal-nominal/14 text-signal-nominal'
+                                        : 'border-white/15 bg-white/[0.04] text-text-primary hover:bg-white/[0.08]'
+                                    : 'cursor-not-allowed border-white/[0.05] text-text-secondary/30',
+                            ].join(' ')}
+                            disabled={!canTransport}
+                            onClick={() => dispatch({ type: activeLoop ? 'LOOP_EXIT' : 'LOOP_TRACK', deckId: id, beats: 4 } as DeckAction)}
+                            title={activeLoop ? 'Exit loop' : 'Set loop (4 bars)'}
+                        >
+                            {activeLoop ? 'EXIT' : 'IN/OUT'}
+                        </button>
+                        {/* Loop double */}
+                        <button
+                            className={[
+                                'flex flex-1 items-center justify-center rounded-[3px] border py-1 font-mono text-[11px] font-bold transition-all duration-150',
+                                canTransport && activeLoop
+                                    ? 'border-white/15 bg-white/[0.04] text-text-primary hover:bg-white/[0.08] active:scale-95'
+                                    : 'cursor-not-allowed border-white/[0.05] text-text-secondary/30',
+                            ].join(' ')}
+                            disabled={!canTransport || !activeLoop}
+                            onClick={() => dispatch({ type: 'LOOP_DOUBLE', deckId: id } as DeckAction)}
+                            title="Double loop length"
+                        >
+                            ×2
+                        </button>
+                    </div>
+
+                    {/* FX section */}
+                    <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-[3px] border border-white/12 bg-white/[0.04] px-2.5 py-1 font-sans text-[10px] font-bold uppercase tracking-[0.1em] text-text-primary">
+                            FX
+                        </span>
+                    </div>
+                    <div className="flex flex-1 flex-col gap-1.5">
+                        <div className="flex gap-1.5">
+                            <FxButton
+                                label="REV"
+                                effectType={EffectType.REVERB}
+                                isActive={isReverbOn}
+                                disabled={!canTransport}
+                                color="var(--color-cyan)"
+                                dispatch={dispatch}
+                                deckId={id}
+                            />
+                            <FxButton
+                                label="DLY"
+                                effectType={EffectType.DELAY}
+                                isActive={isDelayOn}
+                                disabled={!canTransport}
+                                color="var(--color-amber)"
+                                dispatch={dispatch}
+                                deckId={id}
+                            />
+                            <FxButton
+                                label="FLT"
+                                effectType={EffectType.FILTER}
+                                isActive={isFilterOn}
+                                disabled={!canTransport}
+                                color="var(--color-orange)"
+                                dispatch={dispatch}
+                                deckId={id}
+                            />
+                        </div>
+
+                        {/* Key lock toggle — good use of remaining vertical space */}
+                        <button
+                            className={[
+                                'flex w-full items-center justify-center gap-2 rounded-[3px] border py-1.5 font-sans text-[10px] font-bold uppercase tracking-[0.1em] transition-all duration-150',
+                                !canTransport
+                                    ? 'cursor-not-allowed border-white/[0.05] text-text-secondary/30'
+                                    : keyLock
+                                        ? 'border-signal-nominal/40 bg-signal-nominal/12 text-signal-nominal'
+                                        : 'border-white/10 bg-black/20 text-text-secondary hover:border-white/20 hover:text-text-primary',
+                            ].join(' ')}
+                            disabled={!canTransport}
+                            onClick={() => dispatch({ type: 'TOGGLE_KEY_LOCK', deckId: id } as DeckAction)}
+                            title="Toggle key lock (maintains pitch when changing tempo)"
+                        >
+                            {/* Lock icon */}
+                            <svg width="10" height="11" viewBox="0 0 10 11" fill="currentColor" className="opacity-80">
+                                <rect x="1" y="5" width="8" height="6" rx="1" />
+                                <path d="M3 5V3.5a2 2 0 1 1 4 0V5" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+                            </svg>
+                            KEY LOCK
+                        </button>
                     </div>
                 </div>
             </div>
