@@ -18,7 +18,7 @@ interface StemControlProps {
 }
 
 const STEM_ICONS: Record<StemType, React.ReactNode> = {
-  [StemType.LOW]: (
+  [StemType.VOCALS]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l-9.5 5.5v9L12 22l9.5-5.5v-9L12 2z" />
       <path d="M12 22V6.5" />
@@ -34,7 +34,7 @@ const STEM_ICONS: Record<StemType, React.ReactNode> = {
       <path d="M18 20v-6" />
     </svg>
   ),
-  [StemType.MID]: (
+  [StemType.DRUMS]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2v20" />
       <path d="M8 10v4" />
@@ -42,7 +42,7 @@ const STEM_ICONS: Record<StemType, React.ReactNode> = {
       <path d="M4 12h16" />
     </svg>
   ),
-  [StemType.HIGH]: (
+  [StemType.OTHER]: (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12h20" />
       <path d="M2 7h20" />
