@@ -690,230 +690,297 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ dispatch, className = 
                                 }
                             }}
                         >
-                            <div role="row" className="flex shrink-0 items-center border-b border-white/5 px-4 py-2 font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
-                                <div className="w-[40%] shrink-0">Title / Artist</div>
-                                <div className="w-[10%] shrink-0 text-right">BPM</div>
-                                <div className="w-[10%] shrink-0 text-center">KEY</div>
-                                <div className="w-[10%] shrink-0 text-right">TIME</div>
-                                <div className="w-[10%] shrink-0 text-center">MATCH</div>
-                                <div className="w-[12%] shrink-0 text-center">RATING</div>
-                                <div className="w-[8%] shrink-0 text-right">ACT</div>
+                            <div role="row" className="grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/6 px-4 py-3">
+                                <div role="columnheader"><SectionLabel>+</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'title' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Track</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'artist' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Artist</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'bpm' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>BPM</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'key' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Key</SectionLabel></div>
+                                <div role="columnheader" aria-sort={sortKey === 'rating' ? (sortAsc ? 'ascending' : 'descending') : 'none'}><SectionLabel>Rating</SectionLabel></div>
+                                <div role="columnheader"><SectionLabel>Time</SectionLabel></div>
                             </div>
 
-                            <div className="custom-scrollbar flex-1 overflow-y-auto">
+                            <div role="grid" aria-label="Track library" className="custom-scrollbar flex-1 overflow-y-auto">
                                 {filteredTracks.length === 0 ? (
-                                    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 px-8 text-center">
-                                        <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
-                                            {tracks.length === 0 ? 'No tracks' : 'No results'}
+                                    <div className="flex h-full min-h-[320px] items-center justify-center px-8">
+                                        <div className="text-center">
+                                            <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                                                No tracks match this view
+                                            </div>
+                                            <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                                Clear the filters or import fresh audio to continue building the collection.
+                                            </div>
                                         </div>
-                                        <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
-                                            {tracks.length === 0
-                                                ? 'Import audio files to start building your library.'
-                                                : 'Try a different search.'}
-                                        </div>
-                                        {tracks.length === 0 && (
-                                            <button
-                                                onClick={() => realFileInputRef.current?.click()}
-                                                className="mt-2 rounded-btn-sm border border-white/12 bg-black/35 px-4 py-2 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-text-primary transition-all hover:border-white/20"
-                                            >
-                                                Import Audio
-                                            </button>
-                                        )}
                                     </div>
                                 ) : (
                                     filteredTracks.map((track) => {
                                         const isSelected = selectedTrackIds.has(track.id);
-                                        const isHarmonicMatchResult = effectiveActiveKey
-                                            ? isHarmonicMatch(effectiveActiveKey, track.key)
-                                            : false;
+                                        const isCompatible = Boolean(
+                                            effectiveActiveKey
+                                            && track.key
+                                            && track.key !== '?'
+                                            && isHarmonicMatch(effectiveActiveKey, track.key)
+                                        );
 
                                         return (
-                                            <div
+                                            <motion.div
                                                 key={track.id}
-                                                role="row"
-                                                aria-selected={isSelected}
                                                 draggable
-                                                onDragStart={(event) => handleDragStart(event, track.id)}
+                                                whileHover={{ x: 2 }}
+                                                onDragStart={(event) => handleDragStart(event as unknown as React.DragEvent, track.id)}
                                                 onClick={(event) => handleTrackClick(event, track.id)}
-                                                onDoubleClick={(event) => {
-                                                    event.stopPropagation();
-                                                    dispatch({ type: 'LOAD_TRACK', deckId: 'A', track });
-                                                }}
-                                                className={`flex cursor-pointer select-none items-center border-b border-white/[0.04] px-4 py-2.5 transition-all ${
+                                                role="row"
+                                                className={`group relative grid grid-cols-[32px_minmax(0,2.2fr)_minmax(0,1.4fr)_72px_72px_108px_70px] gap-3 border-b border-white/[0.04] px-4 py-3 transition-all ${
                                                     isSelected
-                                                        ? 'bg-signal-sync/10'
-                                                        : 'hover:bg-white/[0.025]'
+                                                        ? 'bg-signal-sync/14'
+                                                        : isCompatible
+                                                            ? 'bg-signal-nominal/[0.03] hover:bg-signal-nominal/[0.06]'
+                                                            : 'hover:bg-white/[0.025]'
                                                 }`}
                                             >
-                                                <div className="flex w-[40%] shrink-0 items-center gap-3 overflow-hidden">
-                                                    <div
-                                                        className="h-9 w-9 shrink-0 overflow-hidden rounded-btn-sm"
-                                                        style={{ background: generateGradient(track.id) }}
-                                                    >
-                                                        <OptimizedImage
-                                                            src={track.filePath ? `${API_BASE}/api/track-art?path=${encodeURIComponent(track.filePath)}` : ''}
-                                                            alt={track.title}
-                                                            className="h-full w-full object-cover"
-                                                        />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="truncate font-sans text-[11px] font-bold leading-tight text-text-primary">{track.title}</div>
-                                                        <div className="truncate font-mono text-[8px] text-text-data">{track.artist}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="w-[10%] shrink-0 text-right font-mono text-[10px] text-text-primary">{track.bpm?.toFixed(1) ?? '--'}</div>
-                                                <div className="w-[10%] shrink-0 text-center">
-                                                    <span
-                                                        className={`inline-block rounded-btn-sm px-2 py-1 font-mono text-[9px] font-bold ${
-                                                            isHarmonicMatchResult
-                                                                ? 'bg-signal-nominal/15 text-signal-nominal'
-                                                                : 'bg-black/30 text-text-data'
-                                                        }`}
-                                                    >
-                                                        {track.key}
-                                                    </span>
-                                                </div>
-                                                <div className="w-[10%] shrink-0 text-right font-mono text-[10px] text-text-primary">{formatTime(track.duration)}</div>
-                                                <div className="w-[10%] shrink-0 text-center">
-                                                    {isHarmonicMatchResult ? (
-                                                        <span className="font-mono text-[8px] font-bold uppercase tracking-wider text-signal-nominal">✓ Match</span>
-                                                    ) : null}
-                                                </div>
-                                                <div className="w-[12%] shrink-0">
-                                                    <div className="flex justify-center">
-                                                        <StarRating
-                                                            rating={track.rating}
-                                                            onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: track.id, rating })}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="flex w-[8%] shrink-0 justify-end gap-1">
+                                                {isSelected ? (
+                                                    <div className="absolute inset-y-0 left-0 w-[2px] bg-signal-sync shadow-[0_0_10px_rgba(59,130,246,0.7)]" />
+                                                ) : isCompatible ? (
+                                                    <div className="absolute inset-y-1 left-0 w-[2px] bg-signal-nominal/45" />
+                                                ) : null}
+
+                                                <div className="flex items-center justify-center">
                                                     <button
                                                         onClick={(event) => handleAddToPlaylist(event, track.id)}
-                                                        className="flex h-6 w-6 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[9px] font-black text-text-secondary transition-all hover:border-white/18 hover:text-text-primary"
-                                                        title="Add to playlist"
+                                                        className="flex h-5 w-5 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[9px] font-black text-text-secondary opacity-0 transition-all hover:border-white/18 hover:text-text-primary group-hover:opacity-100"
                                                     >
                                                         +
                                                     </button>
-                                                    <button
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            dispatch({ type: 'LIBRARY_REMOVE_TRACK', trackId: track.id });
-                                                        }}
-                                                        className="flex h-6 w-6 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[9px] font-black text-text-secondary transition-all hover:border-signal-clipping/28 hover:text-signal-clipping"
-                                                        title="Remove from library"
-                                                    >
-                                                        ×
-                                                    </button>
                                                 </div>
-                                            </div>
+
+                                                <div className="min-w-0">
+                                                    <div className="truncate font-sans text-[14px] font-semibold tracking-tight text-text-primary">
+                                                        {track.title}
+                                                    </div>
+                                                    <div className="mt-1 truncate font-mono text-[8px] uppercase tracking-[0.16em] text-text-secondary">
+                                                        {track.album || 'Unknown album'}
+                                                    </div>
+                                                </div>
+
+                                                <div className="truncate font-mono text-[10px] font-medium text-text-secondary">
+                                                    {track.artist}
+                                                </div>
+
+                                                <div className={`font-mono text-[10px] font-black ${isCompatible ? 'text-signal-nominal' : 'text-text-primary'}`}>
+                                                    {track.bpm ? track.bpm.toFixed(1) : '--.-'}
+                                                </div>
+
+                                                <div className="flex items-center">
+                                                    <div className={`rounded-btn-sm border px-2 py-1 font-mono text-[9px] font-black tracking-[0.12em] ${
+                                                        isCompatible
+                                                            ? 'border-signal-nominal/28 bg-signal-nominal/12 text-signal-nominal'
+                                                            : 'border-white/8 bg-black/30 text-text-primary'
+                                                    }`}>
+                                                        {track.key || '--'}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center">
+                                                    <StarRating
+                                                        rating={track.rating || 0}
+                                                        onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: track.id, rating })}
+                                                    />
+                                                </div>
+
+                                                <div className="font-mono text-[10px] font-bold text-text-secondary">
+                                                    {formatTime(track.duration)}
+                                                </div>
+                                            </motion.div>
                                         );
                                     })
                                 )}
                             </div>
                         </div>
-
-                        {focusedTrack ? (
-                            <div
-                                className="surface-panel flex w-[260px] shrink-0 flex-col overflow-hidden rounded-panel"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <div className="border-b border-white/6 px-4 py-4">
-                                    <SectionLabel>Track Detail</SectionLabel>
-                                    <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
-                                        {focusedTrack.title}
-                                    </div>
-                                </div>
-
-                                <div
-                                    className="h-[140px] shrink-0"
-                                    style={{ background: generateGradient(focusedTrack.id) }}
-                                >
-                                    <OptimizedImage
-                                        src={focusedTrack.filePath ? `${API_BASE}/api/track-art?path=${encodeURIComponent(focusedTrack.filePath)}` : ''}
-                                        alt={focusedTrack.title}
-                                        className="h-full w-full object-cover"
-                                    />
-                                </div>
-
-                                <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <StatChip label="BPM" value={focusedTrack.bpm?.toFixed(1) ?? '--'} />
-                                        <StatChip
-                                            label="Key"
-                                            value={focusedTrack.key}
-                                            accent={effectiveActiveKey && isHarmonicMatch(effectiveActiveKey, focusedTrack.key) ? 'green' : null}
-                                        />
-                                        <StatChip label="Duration" value={formatTime(focusedTrack.duration)} />
-                                        <StatChip label="Genre" value={focusedTrack.genre || '--'} />
-                                        <StatChip label="Added" value={formatDateValue(focusedTrack.dateAdded)} />
-                                        <StatChip label="Artist" value={focusedTrack.artist || '--'} />
-                                    </div>
-
-                                    <div className="mt-4">
-                                        <SectionLabel>Rating</SectionLabel>
-                                        <div className="mt-2">
-                                            <StarRating
-                                                rating={focusedTrack.rating}
-                                                onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: focusedTrack.id, rating })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 flex flex-col gap-2">
-                                        <button
-                                            onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'A', track: focusedTrack })}
-                                            className="w-full rounded-btn-sm border border-cyan-500/28 bg-cyan-500/12 px-3 py-2.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-cyan-300 transition-all hover:bg-cyan-500/18"
-                                        >
-                                            Load to Deck A
-                                        </button>
-                                        <button
-                                            onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'B', track: focusedTrack })}
-                                            className="w-full rounded-btn-sm border border-amber-500/28 bg-amber-500/12 px-3 py-2.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-amber-300 transition-all hover:bg-amber-500/18"
-                                        >
-                                            Load to Deck B
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                dispatch({ type: 'LIBRARY_REMOVE_TRACK', trackId: focusedTrack.id });
-                                                setSelectedTrackIds(new Set());
-                                                setLastSelectedId(null);
-                                            }}
-                                            className="w-full rounded-btn-sm border border-white/10 bg-black/25 px-3 py-2.5 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-text-secondary transition-all hover:border-signal-clipping/24 hover:text-signal-clipping"
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
+                        <aside
+                            className="surface-panel flex w-[360px] shrink-0 flex-col overflow-hidden rounded-panel"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="border-b border-white/6 px-4 py-4">
+                                <SectionLabel>Inspector</SectionLabel>
+                                <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
+                                    {focusedTrack ? 'Selected track' : 'Nothing selected'}
                                 </div>
                             </div>
-                        ) : null}
+
+                            {focusedTrack ? (
+                                <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
+                                    <div className="overflow-hidden rounded-panel border border-white/8 bg-black/30">
+                                        <div className="relative aspect-square overflow-hidden border-b border-white/6">
+                                            <OptimizedImage
+                                                alt={focusedTrack.album}
+                                                fallbackGradient={generateGradient(focusedTrack.id)}
+                                                className="h-full w-full object-cover"
+                                            />
+                                            {selectedTrackIds.size > 1 ? (
+                                                <div className="absolute right-3 top-3 rounded-full border border-signal-sync/28 bg-signal-sync/14 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-signal-sync">
+                                                    {selectedTrackIds.size} selected
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="space-y-4 p-4">
+                                            <div>
+                                                <div className="font-sans text-[20px] font-bold tracking-tight text-text-primary">
+                                                    {focusedTrack.title}
+                                                </div>
+                                                <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                                    {focusedTrack.artist || 'Unknown artist'}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <StatChip label="BPM" value={focusedTrack.bpm ? focusedTrack.bpm.toFixed(1) : '--.-'} accent="green" />
+                                                <StatChip
+                                                    label="Key"
+                                                    value={focusedTrack.key || '--'}
+                                                    accent={effectiveActiveKey && isHarmonicMatch(effectiveActiveKey, focusedTrack.key) ? 'green' : null}
+                                                />
+                                                <StatChip label="Length" value={formatTime(focusedTrack.duration)} />
+                                                <StatChip label="Date" value={formatDateValue(focusedTrack.dateAdded)} />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'A', track: focusedTrack })}
+                                                    className="rounded-btn-sm border border-signal-sync/28 bg-signal-sync/14 px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-signal-sync transition-all hover:bg-signal-sync/22"
+                                                >
+                                                    Load Deck A
+                                                </button>
+                                                <button
+                                                    onClick={() => dispatch({ type: 'LOAD_TRACK', deckId: 'B', track: focusedTrack })}
+                                                    className="rounded-btn-sm border border-signal-sync/28 bg-signal-sync/14 px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-signal-sync transition-all hover:bg-signal-sync/22"
+                                                >
+                                                    Load Deck B
+                                                </button>
+                                            </div>
+
+                                            <button
+                                                onClick={(event) => handleAddToPlaylist(event, focusedTrack.id)}
+                                                disabled={playlists.length === 0}
+                                                className={`w-full rounded-btn-sm border px-4 py-3 font-mono text-[9px] font-black uppercase tracking-[0.18em] transition-all ${
+                                                    playlists.length === 0
+                                                        ? 'cursor-not-allowed border-white/8 bg-white/[0.03] text-white/25'
+                                                        : 'border-white/10 bg-black/35 text-text-primary hover:border-white/18 hover:bg-white/[0.03]'
+                                                }`}
+                                            >
+                                                Add to playlist
+                                            </button>
+
+                                            <div className="space-y-3 rounded-panel border border-white/6 bg-black/25 p-4">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <SectionLabel>Album</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.album || 'Unknown'}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <SectionLabel>Genre</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.genre || 'Unknown'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <SectionLabel>Rating</SectionLabel>
+                                                        <div className="mt-1">
+                                                            <StarRating
+                                                                rating={focusedTrack.rating || 0}
+                                                                onChange={(rating) => dispatch({ type: 'LIBRARY_SET_RATING', trackId: focusedTrack.id, rating })}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <SectionLabel>Status</SectionLabel>
+                                                        <div className="mt-1 font-mono text-[10px] text-text-primary">
+                                                            {focusedTrack.analyzed ? 'Analyzed' : 'Pending'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {effectiveActiveKey ? (
+                                                    <div>
+                                                        <SectionLabel>Harmonic match</SectionLabel>
+                                                        <div className={`mt-1 font-mono text-[10px] ${
+                                                            focusedTrack.key && isHarmonicMatch(effectiveActiveKey, focusedTrack.key)
+                                                                ? 'text-signal-nominal'
+                                                                : 'text-text-secondary'
+                                                        }`}>
+                                                            {focusedTrack.key && isHarmonicMatch(effectiveActiveKey, focusedTrack.key)
+                                                                ? `Matches active deck key ${effectiveActiveKey}`
+                                                                : `No direct harmonic match for ${effectiveActiveKey}`}
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                <div>
+                                                    <SectionLabel>Source</SectionLabel>
+                                                    <div className="mt-1 break-all font-mono text-[9px] text-text-secondary">
+                                                        {focusedTrack.filePath || 'No source path available'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-1 items-center justify-center p-8">
+                                    <div className="max-w-[220px] text-center">
+                                        <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                                            Select a track
+                                        </div>
+                                        <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                            The inspector shows metadata, harmonic context, and fast load actions for the current selection.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </aside>
                     </div>
                 )}
             </div>
 
             {showPlaylistPicker ? (
                 <div
-                    className="fixed z-[300] w-[180px] overflow-hidden rounded-panel border border-white/10 bg-[#111] shadow-2xl"
+                    className="fixed z-[100] min-w-[220px] rounded-panel border border-white/14 bg-black/92 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.7)] backdrop-blur-xl"
                     style={{ left: showPlaylistPicker.x, top: showPlaylistPicker.y }}
                     onClick={(event) => event.stopPropagation()}
                 >
-                    {playlists.map((playlist) => (
-                        <button
-                            key={playlist.id}
-                            onClick={() => {
-                                dispatch({
-                                    type: 'LIBRARY_ADD_TO_PLAYLIST',
-                                    playlistId: playlist.id,
-                                    trackId: showPlaylistPicker.trackId,
-                                });
-                                setShowPlaylistPicker(null);
-                            }}
-                            className="flex w-full items-center justify-between px-3 py-2.5 font-mono text-[9px] text-text-primary transition-all hover:bg-white/[0.04]"
-                        >
-                            <span className="truncate">{playlist.name}</span>
-                            <span className="text-text-data">{playlist.trackIds.length}</span>
-                        </button>
-                    ))}
+                    <div className="border-b border-white/8 px-2 py-2 font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
+                        Add to playlist
+                    </div>
+                    <div className="pt-1">
+                        {playlists.length === 0 ? (
+                            <div className="px-2 py-3 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                No playlists available
+                            </div>
+                        ) : (
+                            playlists.map((playlist: Playlist) => (
+                                <button
+                                    key={playlist.id}
+                                    onClick={() => {
+                                        dispatch({
+                                            type: 'LIBRARY_ADD_TO_PLAYLIST',
+                                            playlistId: playlist.id,
+                                            trackId: showPlaylistPicker.trackId,
+                                        });
+                                        setShowPlaylistPicker(null);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-btn-sm px-3 py-2 text-left font-mono text-[9px] font-black uppercase tracking-[0.16em] text-text-primary transition-all hover:bg-white/[0.05]"
+                                >
+                                    <span className="truncate">{playlist.name}</span>
+                                    <span className="text-text-secondary">{playlist.trackIds.length}</span>
+                                </button>
+                            ))
+                        )}
+                    </div>
                 </div>
             ) : null}
         </div>
