@@ -39,7 +39,7 @@ const KillSwitch: React.FC<{
         whileTap={{ scale: 0.94 }}
         onClick={onClick}
         className={[
-            'flex h-5 min-w-[24px] items-center justify-center rounded-btn-sm border font-mono text-[7px] font-black uppercase tracking-[0.16em] transition-all',
+            'flex h-5 min-w-[22px] items-center justify-center rounded-[2px] border font-mono text-[7px] font-black uppercase tracking-[0.14em] transition-all',
             active
                 ? 'border-signal-clipping/35 bg-signal-clipping/18 text-signal-clipping'
                 : 'border-white/8 bg-black/35 text-text-secondary hover:border-white/16 hover:text-text-primary',
@@ -57,7 +57,7 @@ const FxTypeButton: React.FC<{
     <button
         onClick={onClick}
         className={[
-            'rounded-btn-sm border px-2 py-1 font-mono text-[7px] font-black uppercase tracking-[0.18em] transition-all',
+            'rounded-[2px] border px-1.5 py-0.5 font-mono text-[6px] font-black uppercase tracking-[0.16em] transition-all',
             active
                 ? 'border-signal-sync/35 bg-signal-sync/16 text-signal-sync'
                 : 'border-white/8 bg-black/35 text-text-secondary hover:border-white/14 hover:text-text-primary',
@@ -66,6 +66,11 @@ const FxTypeButton: React.FC<{
         {label}
     </button>
 );
+
+/* ═══════════════════════════════════════════
+   CHANNEL STRIP — compact per-deck mixer controls
+   Kept per user decision (DJM-style center mixer)
+   ═══════════════════════════════════════════ */
 
 const ChannelStrip: React.FC<{
     deckId: 'A' | 'B';
@@ -77,33 +82,28 @@ const ChannelStrip: React.FC<{
     const [fxLabel1, fxLabel2] = getFxLabels(fx.activeType);
 
     return (
-        <div className="surface-panel flex min-w-0 flex-1 flex-col gap-3 rounded-panel p-3" role="group" aria-label={`Deck ${deckId} Mixer Channel`}>
+        <div className="surface-panel flex min-w-0 flex-1 flex-col gap-2 rounded-panel p-2" role="group" aria-label={`Deck ${deckId} Mixer Channel`}>
+            {/* Channel header */}
             <div className="flex items-center justify-between">
-                <div>
-                    <SectionLabel>Channel {deckId}</SectionLabel>
-                    <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
-                        {deckState.track?.title || 'No track'}
-                    </div>
-                </div>
-                <div className="rounded-full border border-white/8 bg-black/35 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary">
-                    {deckState.isPlaying ? 'Live' : 'Ready'}
-                </div>
+                <SectionLabel>Ch {deckId}</SectionLabel>
+                <div className={`h-1.5 w-1.5 rounded-full ${deckState.isPlaying ? 'bg-signal-nominal shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-white/15'}`} />
             </div>
 
-            <div className="grid grid-cols-4 gap-2">
+            {/* TRIM + EQ knobs — compact row */}
+            <div className="grid grid-cols-4 gap-1">
                 <TechnicalKnob
                     value={eq.trim}
                     onChange={(value) => dispatch({ type: 'SET_EQ', deckId, band: 'trim', value })}
                     label="Trim"
-                    size={34}
-                    displayValue={`${((eq.trim - 0.5) * 24).toFixed(1)}dB`}
+                    size={28}
+                    displayValue={`${((eq.trim - 0.5) * 24).toFixed(0)}dB`}
                 />
                 <TechnicalKnob
                     value={eq.high}
                     onChange={(value) => dispatch({ type: 'SET_EQ', deckId, band: 'high', value })}
-                    label="High"
-                    size={34}
-                    displayValue={`${((eq.high - 0.5) * 12).toFixed(1)}dB`}
+                    label="Hi"
+                    size={28}
+                    displayValue={`${((eq.high - 0.5) * 12).toFixed(0)}dB`}
                     bipolar
                     color="var(--color-signal-nominal)"
                 />
@@ -111,89 +111,68 @@ const ChannelStrip: React.FC<{
                     value={eq.mid}
                     onChange={(value) => dispatch({ type: 'SET_EQ', deckId, band: 'mid', value })}
                     label="Mid"
-                    size={34}
-                    displayValue={`${((eq.mid - 0.5) * 12).toFixed(1)}dB`}
+                    size={28}
+                    displayValue={`${((eq.mid - 0.5) * 12).toFixed(0)}dB`}
                     bipolar
                     color="var(--color-signal-nominal)"
                 />
                 <TechnicalKnob
                     value={eq.low}
                     onChange={(value) => dispatch({ type: 'SET_EQ', deckId, band: 'low', value })}
-                    label="Low"
-                    size={34}
-                    displayValue={`${((eq.low - 0.5) * 12).toFixed(1)}dB`}
+                    label="Lo"
+                    size={28}
+                    displayValue={`${((eq.low - 0.5) * 12).toFixed(0)}dB`}
                     bipolar
                     color="var(--color-signal-nominal)"
                 />
             </div>
 
-            <div className="grid grid-cols-[1fr_auto] gap-3">
-                <div className="space-y-3 rounded-panel border border-white/6 bg-black/30 p-3">
-                    <div className="flex items-center justify-between">
-                        <SectionLabel>EQ Kills</SectionLabel>
-                        <div className="font-mono text-[7px] uppercase tracking-[0.18em] text-text-secondary">
-                            Instant cuts
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <KillSwitch
-                            label="L"
-                            active={eq.low === 0}
-                            onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'low', value: eq.low === 0 ? 0.5 : 0 })}
-                        />
-                        <KillSwitch
-                            label="M"
-                            active={eq.mid === 0}
-                            onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'mid', value: eq.mid === 0 ? 0.5 : 0 })}
-                        />
-                        <KillSwitch
-                            label="H"
-                            active={eq.high === 0}
-                            onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'high', value: eq.high === 0 ? 0.5 : 0 })}
-                        />
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-btn-sm border border-white/6 bg-black/35 px-3 py-2">
-                        <SectionLabel>Color</SectionLabel>
-                        <TechnicalKnob
-                            value={deckState.color}
-                            onChange={(value) => dispatch({ type: 'SET_COLOR_FILTER', deckId, value })}
-                            label="Filter"
-                            size={32}
-                            color="var(--color-signal-sync)"
-                            bipolar
-                        />
-                    </div>
+            {/* Kill switches + Color filter */}
+            <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                    <KillSwitch label="L" active={eq.low === 0} onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'low', value: eq.low === 0 ? 0.5 : 0 })} />
+                    <KillSwitch label="M" active={eq.mid === 0} onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'mid', value: eq.mid === 0 ? 0.5 : 0 })} />
+                    <KillSwitch label="H" active={eq.high === 0} onClick={() => dispatch({ type: 'SET_EQ', deckId, band: 'high', value: eq.high === 0 ? 0.5 : 0 })} />
                 </div>
-
-                <div className="flex w-[54px] flex-col items-center gap-2 rounded-panel border border-white/6 bg-black/30 p-2">
-                    <SectionLabel>Vol</SectionLabel>
-                    <VerticalFader
-                        value={deckState.channelVolume}
-                        onChange={(value) => dispatch({ type: 'SET_CHANNEL_VOLUME', deckId, value })}
-                        color="var(--color-signal-nominal)"
-                        label={deckId}
-                        hideValue
-                    />
-                </div>
+                <TechnicalKnob
+                    value={deckState.color}
+                    onChange={(value) => dispatch({ type: 'SET_COLOR_FILTER', deckId, value })}
+                    label="Clr"
+                    size={24}
+                    color="var(--color-signal-sync)"
+                    bipolar
+                />
             </div>
 
-            <div className="rounded-panel border border-white/6 bg-black/30 p-3">
+            {/* Channel volume fader */}
+            <div className="flex flex-col items-center gap-1 rounded-[3px] border border-white/6 bg-black/30 p-1.5">
+                <VerticalFader
+                    value={deckState.channelVolume}
+                    onChange={(value) => dispatch({ type: 'SET_CHANNEL_VOLUME', deckId, value })}
+                    color="var(--color-signal-nominal)"
+                    label={deckId}
+                    hideValue
+                />
+            </div>
+
+            {/* FX section — compact */}
+            <div className="rounded-[3px] border border-white/6 bg-black/30 p-2">
                 <div className="flex items-center justify-between">
                     <SectionLabel>FX</SectionLabel>
                     <button
                         onClick={() => dispatch({ type: 'TOGGLE_FX', deckId })}
                         className={[
-                            'rounded-btn-sm border px-3 py-1 font-mono text-[7px] font-black uppercase tracking-[0.18em] transition-all',
+                            'rounded-[2px] border px-2 py-0.5 font-mono text-[6px] font-black uppercase tracking-[0.16em] transition-all',
                             fx.active
                                 ? 'border-signal-clipping/35 bg-signal-clipping/18 text-signal-clipping'
                                 : 'border-white/8 bg-black/35 text-text-secondary hover:border-white/14 hover:text-text-primary',
                         ].join(' ')}
                     >
-                        {fx.active ? 'On' : 'Bypass'}
+                        {fx.active ? 'On' : 'Off'}
                     </button>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="mt-1.5 flex flex-wrap gap-1">
                     {Object.values(EffectType).map((effectType) => (
                         <FxTypeButton
                             key={effectType}
@@ -204,26 +183,26 @@ const ChannelStrip: React.FC<{
                     ))}
                 </div>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-1">
                     <TechnicalKnob
                         value={fx.knob1}
                         onChange={(value) => dispatch({ type: 'SET_FX_PARAM', deckId, knob: 1, value })}
                         label={fxLabel1}
-                        size={32}
+                        size={24}
                         displayValue={`${(fx.knob1 * 100).toFixed(0)}%`}
                     />
                     <TechnicalKnob
                         value={fx.knob2}
                         onChange={(value) => dispatch({ type: 'SET_FX_PARAM', deckId, knob: 2, value })}
                         label={fxLabel2}
-                        size={32}
+                        size={24}
                         displayValue={`${(fx.knob2 * 100).toFixed(0)}%`}
                     />
                     <TechnicalKnob
                         value={fx.wet}
                         onChange={(value) => dispatch({ type: 'SET_FX_WET', deckId, value })}
                         label="Wet"
-                        size={32}
+                        size={24}
                         color="var(--color-signal-sync)"
                         displayValue={`${(fx.wet * 100).toFixed(0)}%`}
                     />
@@ -233,23 +212,26 @@ const ChannelStrip: React.FC<{
     );
 };
 
+/* ═══════════════════════════════════════════
+   CENTRAL MIXER — DJM-style center column
+   Narrower (340px vs 430px), more compact
+   ═══════════════════════════════════════════ */
+
 export const CentralMixer: React.FC<CentralMixerProps> = ({ state, dispatch }) => {
     const masterLevel = Math.max(state.decks.A.level, state.decks.B.level);
 
     return (
-        <div className="flex w-[430px] shrink-0 flex-col gap-2" role="group" aria-label="Mixer">
-            <div className="surface-panel flex items-center justify-between rounded-panel px-4 py-3">
+        <div className="flex w-[340px] shrink-0 flex-col gap-1.5" role="group" aria-label="Mixer">
+            {/* Mixer header */}
+            <div className="surface-panel flex items-center justify-between rounded-panel px-3 py-2">
                 <div>
                     <SectionLabel>Mixer</SectionLabel>
-                    <div className="mt-1 font-mono text-[11px] font-black uppercase tracking-[0.18em] text-text-primary">
-                        Central control
-                    </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-text-secondary">
-                        Master {Math.round(masterLevel * 100)}%
+                <div className="flex items-center gap-2">
+                    <div className="font-mono text-[7px] uppercase tracking-[0.16em] text-text-secondary">
+                        {Math.round(masterLevel * 100)}%
                     </div>
-                    <div className="h-2 w-16 overflow-hidden rounded-full border border-white/8 bg-black/35">
+                    <div className="h-1.5 w-12 overflow-hidden rounded-full border border-white/8 bg-black/35">
                         <div
                             className="h-full bg-gradient-to-r from-signal-nominal via-text-data to-signal-clipping"
                             style={{ width: `${Math.min(masterLevel, 1) * 100}%` }}
@@ -258,24 +240,16 @@ export const CentralMixer: React.FC<CentralMixerProps> = ({ state, dispatch }) =
                 </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 gap-2">
+            {/* Channel strips + VU meters */}
+            <div className="flex min-h-0 flex-1 gap-1.5">
                 <ChannelStrip deckId="A" state={state} dispatch={dispatch} />
 
-                <div className="surface-panel flex w-[84px] shrink-0 flex-col items-center rounded-panel px-3 py-4">
-                    <SectionLabel>Master</SectionLabel>
-
-                    <div className="mt-4 flex w-full flex-1 gap-2 rounded-panel border border-white/6 bg-black/35 p-2">
+                {/* Center spine: VU meters */}
+                <div className="surface-panel flex w-[56px] shrink-0 flex-col items-center rounded-panel px-2 py-3">
+                    <SectionLabel>Output</SectionLabel>
+                    <div className="mt-3 flex w-full flex-1 gap-1.5 rounded-[3px] border border-white/6 bg-black/35 p-1.5">
                         <VUMeter level={state.decks.A.level} className="h-full flex-1" />
                         <VUMeter level={state.decks.B.level} className="h-full flex-1" />
-                    </div>
-
-                    <div className="mt-4 flex w-full flex-col gap-2">
-                        <div className="rounded-btn-sm border border-white/8 bg-black/35 px-2 py-2 text-center font-mono text-[7px] font-black uppercase tracking-[0.18em] text-text-secondary">
-                            A
-                        </div>
-                        <div className="rounded-btn-sm border border-white/8 bg-black/35 px-2 py-2 text-center font-mono text-[7px] font-black uppercase tracking-[0.18em] text-text-secondary">
-                            B
-                        </div>
                     </div>
                 </div>
 
