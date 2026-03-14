@@ -427,397 +427,493 @@ export const Deck: React.FC<DeckProps> = ({ deckState, dispatch, activeColor }) 
         setDeleteCandidateIndex(null);
     };
 
+    const renderCuePanel = () => (
+        <div className="grid h-full grid-cols-4 gap-3">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => {
+                const cue = cuePoints[index];
+                const isSet = cue !== null;
+                const color = CUE_COLORS[index];
+                const cueTime = cue !== null ? formatClock(duration * cue).main : 'SET';
+
+                return (
+                    <motion.button
+                        key={index}
+                        whileHover={{ y: -2, scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        className={[
+                            'relative flex min-h-[88px] flex-col justify-between rounded-btn-lg border p-3 text-left transition-all',
+                            isSet
+                                ? 'border-white/12 bg-white/[0.03] text-text-primary shadow-[0_8px_24px_rgba(0,0,0,0.28)]'
+                                : 'border-white/6 bg-black/25 text-text-secondary hover:border-white/12 hover:text-text-primary',
+                        ].join(' ')}
+                        onMouseDown={() => handlePadDown(index)}
+                        onMouseUp={() => handlePadUp(index)}
+                        onMouseLeave={() => pressTimer && clearTimeout(pressTimer)}
+                        aria-label={`Hot Cue ${index + 1}${isSet ? ` at ${cueTime}` : ' empty'}`}
+                    >
+                        <div
+                            className="absolute inset-x-0 top-0 h-[3px] rounded-t-btn-lg"
+                            style={{ backgroundColor: isSet ? color : 'rgba(255,255,255,0.06)' }}
+                        />
+                        <span className="font-mono text-[11px] font-black uppercase tracking-[0.2em] text-white/55">
+                            {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div className="space-y-1">
+                            <div className={`font-mono text-[12px] font-bold tracking-[0.16em] ${isSet ? 'text-text-primary' : 'text-text-secondary'}`}>
+                                {isSet ? cueTime : 'EMPTY'}
+                            </div>
+                            <div className="font-mono text-[8px] uppercase tracking-[0.16em] text-white/25">
+                                {isSet ? 'Tap to jump' : 'Tap to set'}
+                            </div>
+                        </div>
+                    </motion.button>
+                );
+            })}
+        </div>
+    );
+
+    const renderStemPanel = () => {
+        const statusMessage = stemMode === 'real'
+            ? 'Real drums, bass, other, and vocals are loaded.'
+            : 'AI stem separation coming soon. Using EQ-based frequency filtering.';
+
+        const showRealStemStatus = stemMode !== 'real';
+
+        return (
+            <div className="flex h-full flex-col gap-3">
+                <div className="surface-panel rounded-panel flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="min-w-0 space-y-1">
+                        <div className="font-mono text-[10px] font-black uppercase tracking-[0.22em] text-text-primary">
+                            {stemMode === 'real' ? 'Real Stem Playback' : 'Stem Controls'}
+                        </div>
+                        <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                            {statusMessage}
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => dispatch({ type: 'SEPARATE_STEMS', deckId: id })}
+                        disabled={!canSeparateStems || isSeparatingStems || stemMode === 'real'}
+                        className={[
+                            'rounded-btn-sm border px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.18em] transition-all',
+                            !canSeparateStems || isSeparatingStems || stemMode === 'real'
+                                ? 'cursor-not-allowed border-white/8 bg-white/[0.03] text-white/28'
+                                : 'border-signal-nominal/28 bg-signal-nominal/16 text-signal-nominal hover:bg-signal-nominal/22',
+                        ].join(' ')}
+                    >
+                        {stemMode === 'real' ? 'Loaded' : 'Coming Soon'}
+                    </button>
+                </div>
+
+                {showRealStemStatus ? (
+                    <div className="grid gap-3 xl:grid-cols-3">
+                        <div className="surface-panel rounded-panel px-4 py-3">
+                            <div className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
+                                Mode
+                            </div>
+                            <div className="mt-2 font-mono text-[11px] font-black uppercase tracking-[0.16em] text-text-primary">
+                                Frequency contour mix
+                            </div>
+                            <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                The controls below shape broad frequency bands. AI stem separation is coming soon.
+                            </div>
+                        </div>
+
+                        <div className="surface-panel rounded-panel px-4 py-3">
+                            <div className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
+                                Model status
+                            </div>
+                            <div className="mt-2 font-mono text-[11px] font-black uppercase tracking-[0.16em] text-text-primary">
+                                Coming Soon
+                            </div>
+                            <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                                {statusMessage}
+                            </div>
+                        </div>
+
+                        <div className="surface-panel rounded-panel px-4 py-3">
+                            <div className="font-mono text-[8px] font-black uppercase tracking-[0.2em] text-text-data">
+                                Next step
+                            </div>
+                            <div className="mt-2 font-mono text-[11px] font-black uppercase tracking-[0.16em] text-text-primary">
+                                Open settings
+                            </div>
+                            <button
+                                onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
+                                className="mt-3 rounded-btn-sm border border-white/10 bg-black/35 px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-primary transition-all hover:border-white/18 hover:bg-white/[0.03]"
+                            >
+                                Stem model settings
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+
+                <div className="grid flex-1 grid-cols-2 gap-3 xl:grid-cols-4">
+                    {stemOrder.map((type) => {
+                        const config = stemConfig[type];
+                        const stemState = stems[type];
+                        return (
+                            <StemControl
+                                key={type}
+                                type={type}
+                                label={config.label}
+                                color={config.color}
+                                volume={stemState.volume}
+                                param={stemState.param}
+                                isActive={stemState.active}
+                                hideValue
+                                onToggle={() => dispatch({ type: 'TOGGLE_STEM', deckId: id, stem: type })}
+                                onVolumeChange={(value) => dispatch({ type: 'SET_VOLUME', deckId: id, stem: type, value })}
+                                onParamChange={(value) => dispatch({ type: 'SET_STEM_PARAM', deckId: id, stem: type, value })}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    const renderLoopPanel = () => (
+        <div className="flex h-full flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
+                {LOOP_SIZES.map((beats) => {
+                    const selected = activeLoop === beats;
+                    return (
+                        <motion.button
+                            key={beats}
+                            whileHover={{ y: -2 }}
+                            whileTap={{ scale: 0.98 }}
+                            className={[
+                                'rounded-btn-lg border px-4 py-4 text-left transition-all',
+                                selected
+                                    ? 'border-signal-nominal/35 bg-signal-nominal/16 text-text-primary'
+                                    : 'border-white/6 bg-black/25 text-text-secondary hover:border-white/12 hover:text-text-primary',
+                            ].join(' ')}
+                            onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats })}
+                        >
+                            <div className="font-mono text-[22px] font-black italic leading-none text-text-primary">{beats}</div>
+                            <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.18em] text-text-secondary">Beats</div>
+                        </motion.button>
+                    );
+                })}
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+                <button
+                    className="rounded-btn-sm border border-white/8 bg-white/[0.03] px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                    onClick={() => dispatch({ type: 'LOOP_HALVE', deckId: id })}
+                    disabled={!canTransport}
+                >
+                    Halve
+                </button>
+                <button
+                    className="rounded-btn-sm border border-white/8 bg-white/[0.03] px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                    onClick={() => dispatch({ type: 'LOOP_DOUBLE', deckId: id })}
+                    disabled={!canTransport}
+                >
+                    Double
+                </button>
+                <button
+                    className="rounded-btn-sm border border-white/8 bg-white/[0.03] px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                    onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats: null })}
+                    disabled={!canTransport}
+                >
+                    Exit
+                </button>
+            </div>
+
+            <div className="surface-panel rounded-panel flex items-center justify-between px-4 py-3">
+                <div>
+                    <div className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-text-primary">
+                        {activeLoop ? `${activeLoop} Beat Loop Armed` : 'Loop Idle'}
+                    </div>
+                    <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-text-secondary">
+                        {activeLoop ? 'Loop region follows the current beat grid.' : 'Choose a size to punch in a loop.'}
+                    </div>
+                </div>
+                <div className="h-8 w-8 rounded-full border border-white/8 bg-black/35 p-1">
+                    <div className={`h-full w-full rounded-full ${activeLoop ? 'bg-signal-nominal shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-white/6'}`} />
+                </div>
+            </div>
+        </div>
+    );
+
     return (
         <div
-            className={`relative flex h-full flex-col overflow-hidden rounded-panel border transition-all duration-300 ${
-                isDragOver
-                    ? 'border-signal-nominal/60 bg-signal-nominal/6 shadow-[0_0_0_2px_rgba(16,185,129,0.35)]'
-                    : isPlaying
-                        ? 'border-white/10 bg-canvas/50 shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
-                        : 'border-white/6 bg-canvas/35'
-            }`}
+            className="surface-panel relative flex h-full flex-col overflow-hidden rounded-panel"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
             <input
-                type="file"
                 ref={fileInputRef}
-                className="hidden"
-                accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac"
+                type="file"
                 onChange={handleFileLoad}
+                className="hidden"
+                accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
             />
 
-            {/* Track Info Header */}
-            <div className="relative flex shrink-0 items-center gap-3 border-b border-white/6 px-4 py-3">
-                <button
-                    onClick={openFilePicker}
-                    disabled={isLoading}
-                    className={`relative flex min-w-0 flex-1 items-center gap-3 rounded-btn-sm border px-3 py-2 text-left transition-all ${
-                        isLoading
-                            ? 'cursor-wait border-signal-nominal/30 bg-signal-nominal/10'
-                            : track
-                                ? 'border-white/8 bg-white/[0.03] hover:border-white/16 hover:bg-white/[0.06]'
-                                : 'border-dashed border-white/20 bg-white/[0.02] hover:border-white/35 hover:bg-white/[0.04]'
-                    }`}
-                >
-                    {isLoading ? (
-                        <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-signal-nominal border-t-transparent" />
-                            <span className="font-mono text-[10px] text-signal-nominal">ANALYZING...</span>
-                        </div>
-                    ) : track ? (
-                        <div className="min-w-0 flex-1">
-                            <div className="truncate font-sans text-[11px] font-bold leading-tight text-text-primary">{track.title}</div>
-                            <div className="truncate font-mono text-[9px] text-text-data">{track.artist}</div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2">
-                            <span className="font-mono text-[9px] text-text-secondary">CLICK OR DROP FILE</span>
-                        </div>
-                    )}
-                </button>
-
-                <div className="flex shrink-0 items-center gap-1.5">
-                    {track && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); dispatch({ type: 'EJECT_TRACK', deckId: id }); }}
-                            className="flex h-8 w-8 items-center justify-center rounded-btn-sm border border-white/10 bg-black/40 text-text-data transition-all hover:border-signal-clipping/40 hover:text-signal-clipping"
-                            title="Eject track"
-                        >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <polyline points="23 7 13 17 1 17" />
-                                <line x1="17" y1="1" x2="17" y2="17" />
-                            </svg>
-                        </button>
-                    )}
-                    <div
-                        className={`flex h-8 w-8 items-center justify-center rounded-btn-sm border font-mono text-[10px] font-black ${
-                            id === 'A'
-                                ? 'border-cyan-500/30 bg-cyan-500/12 text-cyan-400'
-                                : 'border-amber-500/30 bg-amber-500/12 text-amber-400'
-                        }`}
-                    >
-                        {id}
-                    </div>
-                </div>
-            </div>
-
-            {/* Stats Bar */}
-            <div className="flex shrink-0 gap-2 border-b border-white/5 px-3 py-2">
-                <DeckStat
-                    label="BPM"
-                    value={<><span>{bpmDisplay.split('.')[0]}</span><span className="text-[10px] text-text-data">.{bpmDisplay.split('.')[1]}</span></>}
-                    accent={isPlaying}
-                />
-                <DeckStat
-                    label="KEY"
-                    value={track?.key ?? '--'}
-                />
-                <div className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-btn-sm border border-white/6 bg-black/45 px-2 py-2">
-                    <div className="font-mono text-[28px] font-bold leading-none tracking-tighter text-text-primary">
-                        <span>{currentTime.main}</span>
-                        <span className="text-[14px] text-text-data">{currentTime.sub}</span>
-                    </div>
-                    <div className="mt-1 font-mono text-[9px] text-text-data/60">
-                        -{remainingTime.main}{remainingTime.sub}
-                    </div>
-                </div>
-                <DeckStat
-                    label="PITCH"
-                    value={`${pitchPercent >= 0 ? '+' : ''}${pitchPercent.toFixed(1)}%`}
-                    align="right"
-                />
-                <DeckStat
-                    label="RANGE"
-                    value={`${(pitchRange * 100).toFixed(0)}%`}
-                    align="right"
-                />
-            </div>
-
-            {/* Waveform */}
-            <div className="relative flex-1 overflow-hidden">
-                <Waveform
-                    deckId={id}
-                    waveformData={waveformData}
-                    isPlaying={isPlaying}
-                    progress={progress}
-                    duration={duration}
-                    cuePoints={cuePoints}
-                    loopRegion={loopRegion}
-                    dispatch={dispatch}
-                    activeColor={activeColor}
-                />
-            </div>
-
-            {/* Pad Mode Tabs */}
-            <div className="flex shrink-0 gap-1.5 border-t border-white/5 px-3 py-2">
-                {(['HOT_CUE', 'STEMS', 'LOOP'] as const).map((mode) => (
-                    <DeckModeTab
-                        key={mode}
-                        label={mode.replace('_', ' ')}
-                        active={padMode === mode}
-                        onClick={() => setPadMode(mode)}
-                    />
-                ))}
-            </div>
-
-            {/* Pad Grid */}
-            {padMode === 'HOT_CUE' && (
-                <div className="grid shrink-0 grid-cols-4 gap-1.5 border-t border-white/5 px-3 pb-2 pt-1">
-                    {cuePoints.map((point, index) => (
-                        <button
-                            key={index}
-                            disabled={!canTransport}
-                            onMouseDown={(e) => { e.preventDefault(); handlePadDown(index); }}
-                            onMouseUp={(e) => { e.preventDefault(); handlePadUp(index); }}
-                            onMouseLeave={() => { if (pressTimer) { clearTimeout(pressTimer); setPressTimer(null); } }}
-                            style={point !== null ? { borderColor: `${CUE_COLORS[index]}40`, backgroundColor: `${CUE_COLORS[index]}14`, color: CUE_COLORS[index] } : {}}
-                            className={`relative flex h-10 items-center justify-center overflow-hidden rounded-btn-sm border transition-all ${
-                                point !== null
-                                    ? 'shadow-[0_0_8px_rgba(255,255,255,0.05)]'
-                                    : 'border-white/8 bg-black/30 text-text-data/50 hover:border-white/16 hover:text-text-data'
-                            } disabled:cursor-not-allowed disabled:opacity-35`}
-                        >
-                            <span className="font-mono text-[10px] font-bold">
-                                {point !== null
-                                    ? `${Math.floor(point / 60)}:${(Math.floor(point % 60)).toString().padStart(2, '0')}`
-                                    : `${index + 1}`}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            {padMode === 'STEMS' && (
-                <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-white/5 px-3 pb-3 pt-2">
-                    {stemOrder.map((stemType) => {
-                        const stem = stems[stemType];
-                        const config = stemConfig[stemType];
-                        return (
-                            <StemControl
-                                key={stemType}
-                                label={config.label}
-                                color={config.color}
-                                active={stem.active}
-                                volume={stem.volume}
-                                param={stem.param}
-                                onToggle={() => dispatch({ type: 'TOGGLE_STEM', deckId: id, stem: stemType })}
-                                onVolumeChange={(value) => dispatch({ type: 'SET_VOLUME', deckId: id, stem: stemType, value })}
-                                onParamChange={(value) => dispatch({ type: 'SET_STEM_PARAM', deckId: id, stem: stemType, value })}
-                            />
-                        );
-                    })}
-                </div>
-            )}
-
-            {padMode === 'LOOP' && (
-                <div className="flex shrink-0 flex-col gap-2 border-t border-white/5 px-3 pb-3 pt-2">
-                    <div className="grid grid-cols-4 gap-1.5">
-                        {LOOP_SIZES.map((beats) => (
-                            <motion.button
-                                key={beats}
-                                whileTap={{ scale: 0.96, y: 1 }}
-                                transition={SPRING_SNAPPY}
-                                disabled={!canTransport}
-                                onClick={() => dispatch({ type: 'LOOP_TRACK', deckId: id, beats: activeLoop === beats ? null : beats })}
-                                className={`flex h-10 items-center justify-center rounded-btn-sm border font-mono text-[11px] font-bold tracking-wider transition-all ${
-                                    activeLoop === beats
-                                        ? 'border-signal-nominal/50 bg-signal-nominal/15 text-signal-nominal shadow-[0_0_10px_rgba(16,185,129,0.25)]'
-                                        : 'border-white/10 bg-black/30 text-text-data hover:border-white/20 hover:text-text-primary'
-                                } disabled:cursor-not-allowed disabled:opacity-35`}
-                            >
-                                {beats}
-                            </motion.button>
-                        ))}
-                    </div>
-                    <div className="flex gap-1.5">
-                        <button
-                            disabled={!activeLoop}
-                            onClick={() => dispatch({ type: 'LOOP_HALVE', deckId: id })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-2 font-mono text-[10px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ÷2
-                        </button>
-                        <button
-                            disabled={!activeLoop}
-                            onClick={() => dispatch({ type: 'LOOP_DOUBLE', deckId: id })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-2 font-mono text-[10px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ×2
-                        </button>
-                        <button
-                            disabled={!canTransport}
-                            onClick={() => dispatch({ type: 'BEAT_JUMP', deckId: id, beats: -4 })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-2 font-mono text-[10px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ◀◀
-                        </button>
-                        <button
-                            disabled={!canTransport}
-                            onClick={() => dispatch({ type: 'BEAT_JUMP', deckId: id, beats: 4 })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-2 font-mono text-[10px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ▶▶
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Transport Controls */}
-            <div className="flex shrink-0 gap-2 border-t border-white/5 px-3 pb-3 pt-2">
-                <TransportButton
-                    label="CUE"
-                    active={false}
-                    disabled={!canTransport}
-                    onClick={() => dispatch({ type: 'CUE_MASTER', deckId: id })}
-                    compact
-                />
-                <TransportButton
-                    label={isPlaying ? 'PAUSE' : 'PLAY'}
-                    meta={isPlaying ? 'STOP TO CUE' : 'PRESS TO START'}
-                    active={isPlaying}
-                    disabled={!canTransport}
-                    tone="primary"
-                    onClick={() => dispatch({ type: 'TOGGLE_PLAY', deckId: id })}
-                />
-                <TransportButton
-                    label="SYNC"
-                    active={isSynced}
-                    disabled={!canTransport}
-                    tone="sync"
-                    onClick={() => dispatch({ type: 'SYNC_DECK', deckId: id })}
-                    compact
-                />
-            </div>
-
-            {/* Pitch Fader + EQ Knobs + Key Controls */}
-            <div className="flex shrink-0 gap-3 border-t border-white/5 px-3 pb-3 pt-2">
-                {/* Pitch Fader */}
-                <div className="flex flex-col items-center gap-1">
-                    <span className="font-mono text-[7px] font-bold uppercase tracking-widest text-text-data/60">PITCH</span>
-                    <div
-                        className="relative flex h-28 w-5 cursor-ns-resize items-center justify-center"
-                        onMouseDown={handlePitchMouseDown}
-                        title="Drag to adjust pitch. Shift for fine control."
-                    >
-                        {/* Track */}
-                        <div className="absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-white/10" />
+            <div className="border-b border-white/6 bg-black/25 px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-start gap-3">
                         <div
-                            className="absolute left-1/2 h-[2px] w-[12px] -translate-x-1/2 bg-white/30"
-                            style={{ top: '50%', transform: 'translate(-50%, -50%)' }}
-                        />
-                        {/* Handle */}
-                        <div
-                            className="absolute left-1/2 h-5 w-4 -translate-x-1/2 rounded-sm border border-white/20 bg-surface-idle shadow-md"
-                            style={{ top: `${50 - pitch * 40}%`, transform: 'translate(-50%, -50%)' }}
-                        />
-                    </div>
-                    <button
-                        onClick={cyclePitchRange}
-                        className="rounded-btn-sm border border-white/10 bg-black/30 px-2 py-1 font-mono text-[7px] text-text-data transition-all hover:border-white/20 hover:text-text-primary"
-                    >
-                        ±{(pitchRange * 100).toFixed(0)}%
-                    </button>
-                </div>
-
-                {/* EQ + FX Controls */}
-                <div className="flex flex-1 flex-col gap-2">
-                    <div className="flex justify-around">
-                        <TechnicalKnob
-                            value={deckState.eq.high}
-                            onChange={(v) => dispatch({ type: 'SET_EQ', deckId: id, band: 'high', value: v })}
-                            label="HI"
-                            color={activeColor}
-                        />
-                        <TechnicalKnob
-                            value={deckState.eq.mid}
-                            onChange={(v) => dispatch({ type: 'SET_EQ', deckId: id, band: 'mid', value: v })}
-                            label="MID"
-                            color={activeColor}
-                        />
-                        <TechnicalKnob
-                            value={deckState.eq.low}
-                            onChange={(v) => dispatch({ type: 'SET_EQ', deckId: id, band: 'low', value: v })}
-                            label="LOW"
-                            color={activeColor}
-                        />
-                        <TechnicalKnob
-                            value={deckState.eq.trim}
-                            onChange={(v) => dispatch({ type: 'SET_EQ', deckId: id, band: 'trim', value: v })}
-                            label="TRIM"
-                        />
-                        <TechnicalKnob
-                            value={deckState.color}
-                            onChange={(v) => dispatch({ type: 'SET_COLOR_FILTER', deckId: id, value: v })}
-                            label="COLOR"
-                            bipolar
-                        />
-                    </div>
-
-                    {/* Key Lock + Shift */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => dispatch({ type: 'TOGGLE_KEY_LOCK', deckId: id })}
-                            className={`flex items-center gap-1.5 rounded-btn-sm border px-3 py-1.5 font-mono text-[9px] font-bold transition-all ${
-                                keyLock
-                                    ? 'border-signal-nominal/40 bg-signal-nominal/12 text-signal-nominal'
-                                    : 'border-white/10 bg-black/30 text-text-data hover:border-white/20'
-                            }`}
+                            className="flex min-w-[56px] flex-col rounded-btn-sm border border-white/8 bg-black/45 px-3 py-2"
+                            style={{ boxShadow: `inset 2px 0 0 ${activeColor}` }}
                         >
-                            KEY LOCK
-                        </button>
-                        <div className="flex flex-1 items-center gap-1">
-                            <button
-                                onClick={() => dispatch({ type: 'SET_KEY_SHIFT', deckId: id, value: Math.max(-12, keyShift - 1) })}
-                                disabled={!keyLock}
-                                className="flex h-7 w-7 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[10px] text-text-data transition-all hover:border-white/20 disabled:opacity-30"
-                            >
-                                −
-                            </button>
-                            <div className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/8 bg-black/40 py-1 font-mono text-[10px] text-text-primary">
-                                {keyShift >= 0 ? '+' : ''}{keyShift}
+                            <span className="font-mono text-[7px] font-black uppercase tracking-[0.24em] text-text-secondary">Deck</span>
+                            <span className="mt-1 font-mono text-[18px] font-black italic leading-none text-text-primary">{id}</span>
+                        </div>
+
+                        <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2">
+                                <span className="truncate font-sans text-[18px] font-bold uppercase tracking-tight text-text-primary">
+                                    {track?.title || 'Load a track'}
+                                </span>
+                                {isLoading ? (
+                                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary">
+                                        Loading
+                                    </span>
+                                ) : null}
                             </div>
+                            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-secondary">
+                                {track?.artist || 'Drop audio or use the library to arm this deck.'}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                    onClick={() => dispatch({ type: 'SET_KEY_SHIFT', deckId: id, value: Math.max(-12, keyShift - 1) })}
+                                    className="rounded-btn-sm border border-white/8 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                                    disabled={!track}
+                                >
+                                    Key -
+                                </button>
+                                <button
+                                    onClick={() => dispatch({ type: 'SET_KEY_SHIFT', deckId: id, value: Math.min(12, keyShift + 1) })}
+                                    className="rounded-btn-sm border border-white/8 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                                    disabled={!track}
+                                >
+                                    Key +
+                                </button>
+                                <button
+                                    onClick={() => dispatch({ type: 'TOGGLE_KEY_LOCK', deckId: id })}
+                                    className={[
+                                        'rounded-btn-sm border px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.16em] transition-all',
+                                        keyLock
+                                            ? 'border-signal-nominal/28 bg-signal-nominal/16 text-signal-nominal'
+                                            : 'border-white/8 text-text-secondary hover:border-white/14 hover:text-text-primary',
+                                    ].join(' ')}
+                                    disabled={!track}
+                                >
+                                    {keyLock ? 'Lock On' : 'Lock Off'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <DeckStat label="Remain" value={<span>{remainingTime.main}<span className="text-[10px] text-text-secondary">{remainingTime.sub}</span></span>} />
+                        <DeckStat label="Key" value={track ? `${track.key}${keyShift !== 0 ? ` ${keyShift > 0 ? '+' : ''}${keyShift}` : ''}` : '--'} accent={keyLock} />
+                        <DeckStat label="Pitch" value={`${pitchPercent >= 0 ? '+' : ''}${pitchPercent.toFixed(1)}%`} accent={Math.abs(pitchPercent) > 0.01} />
+                        <DeckStat label="BPM" value={bpmDisplay} accent={isSynced} align="right" />
+                        <div className="flex flex-col gap-2">
                             <button
-                                onClick={() => dispatch({ type: 'SET_KEY_SHIFT', deckId: id, value: Math.min(12, keyShift + 1) })}
-                                disabled={!keyLock}
-                                className="flex h-7 w-7 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 font-mono text-[10px] text-text-data transition-all hover:border-white/20 disabled:opacity-30"
+                                onClick={() => dispatch({ type: 'DOUBLE_DECK', deckId: id })}
+                                className="rounded-btn-sm border border-white/8 bg-white/[0.03] px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:border-white/14 hover:text-text-primary"
+                                disabled={!track}
+                            >
+                                Clone
+                            </button>
+                            <button
+                                onClick={() => dispatch({ type: 'EJECT_TRACK', deckId: id })}
+                                className="rounded-btn-sm border border-white/8 bg-white/[0.03] px-3 py-2 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:border-signal-clipping/26 hover:text-signal-clipping"
+                                disabled={!track}
+                            >
+                                Eject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <TrackOverview
+                data={waveformData || []}
+                progress={progress}
+                color={activeColor}
+                loopRegion={loopRegion}
+                cuePoints={cuePoints}
+                duration={duration}
+                onSeek={(value) => {
+                    if (!track) return;
+                    dispatch({ type: 'SEEK_POSITION', deckId: id, value });
+                }}
+            />
+
+            <div className={`flex min-h-0 flex-1 ${id === 'B' ? 'flex-row-reverse' : 'flex-row'}`}>
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="relative border-b border-white/6 bg-black/45">
+                        <div className="h-[144px] min-h-[144px]">
+                            <Waveform
+                                key={`${id}-${track?.id || 'none'}`}
+                                isPlaying={isPlaying}
+                                progress={progress}
+                                color={activeColor}
+                                data={waveformData}
+                                cuePoints={cuePoints}
+                                loopRegion={loopRegion}
+                            />
+                        </div>
+
+                        {!track ? (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <button
+                                    onClick={openFilePicker}
+                                    className={[
+                                        'rounded-btn-lg border border-dashed px-5 py-3 font-mono text-[9px] font-black uppercase tracking-[0.2em] transition-all',
+                                        isDragOver
+                                            ? 'border-signal-nominal/40 bg-signal-nominal/14 text-signal-nominal'
+                                            : 'border-white/10 bg-black/55 text-text-secondary hover:border-white/18 hover:text-text-primary',
+                                    ].join(' ')}
+                                >
+                                    {isDragOver ? 'Drop to load' : 'Choose file or drop audio'}
+                                </button>
+                            </div>
+                        ) : null}
+
+                        {track && stemMode === 'real' ? (
+                            <div className="absolute right-3 top-3 rounded-full border border-signal-nominal/25 bg-signal-nominal/12 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] text-signal-nominal">
+                                Real stems loaded
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 border-b border-white/6 bg-black/25 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                            <DeckModeTab active={padMode === 'HOT_CUE'} label="Cues" onClick={() => setPadMode('HOT_CUE')} />
+                            <DeckModeTab active={padMode === 'STEMS'} label="Stems" onClick={() => setPadMode('STEMS')} />
+                            <DeckModeTab active={padMode === 'LOOP'} label="Loop" onClick={() => setPadMode('LOOP')} />
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="h-5 w-20 rounded-full border border-white/6 bg-black/35 p-[3px]">
+                                <div className="h-full overflow-hidden rounded-full">
+                                    <div className="h-full bg-gradient-to-r from-signal-nominal/30 via-signal-nominal to-signal-clipping shadow-[0_0_14px_rgba(16,185,129,0.28)]" style={{ width: `${Math.min(level, 1) * 100}%` }} />
+                                </div>
+                            </div>
+                            <span className="font-mono text-[8px] font-black uppercase tracking-[0.18em] text-text-secondary">
+                                {padMode === 'HOT_CUE'
+                                    ? 'Performance cues'
+                                    : padMode === 'STEMS'
+                                        ? (stemMode === 'real' ? 'Neural stem mix' : 'Frequency contour mix')
+                                        : activeLoop
+                                            ? `${activeLoop} beat loop`
+                                            : 'Loop controls'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="min-h-[220px] flex-1 overflow-y-auto p-3">
+                        {padMode === 'HOT_CUE' ? renderCuePanel() : null}
+                        {padMode === 'STEMS' ? renderStemPanel() : null}
+                        {padMode === 'LOOP' ? renderLoopPanel() : null}
+                    </div>
+
+                    <div className="border-t border-white/6 bg-black/45 px-3 py-3">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div className="font-mono text-[8px] font-black uppercase tracking-[0.22em] text-text-secondary">
+                                {track ? (isPlaying ? `Playing ${currentTime.main}${currentTime.sub}` : `Ready at ${currentTime.main}${currentTime.sub}`) : 'Deck idle'}
+                            </div>
+                            <div className={`rounded-full px-2 py-1 font-mono text-[8px] font-black uppercase tracking-[0.18em] ${isSynced ? 'border border-signal-sync/30 bg-signal-sync/14 text-signal-sync' : 'border border-white/8 bg-white/[0.03] text-text-secondary'}`}>
+                                {isSynced ? 'Synced' : 'Free'}
+                            </div>
+                        </div>
+
+                        <div className="flex items-stretch gap-3">
+                            <TransportButton
+                                label="CUE"
+                                meta={canTransport ? 'Return' : 'Set deck'}
+                                disabled={!canTransport}
+                                onClick={() => dispatch({ type: 'CUE_MASTER', deckId: id })}
+                                compact
+                            />
+                            <TransportButton
+                                label={isPlaying ? 'PAUSE' : 'PLAY'}
+                                meta={isLoading ? 'Loading audio' : canTransport ? (isPlaying ? 'Transport armed' : 'Ready to fire') : 'Load a track'}
+                                active={isPlaying}
+                                disabled={!canTransport}
+                                tone="primary"
+                                onClick={() => dispatch({ type: 'TOGGLE_PLAY', deckId: id })}
+                            />
+                            <TransportButton
+                                label="SYNC"
+                                meta={isSynced ? 'On grid' : 'Match tempo'}
+                                active={isSynced}
+                                disabled={!canTransport}
+                                tone="sync"
+                                onClick={() => dispatch({ type: 'SYNC_DECK', deckId: id })}
+                                compact
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className={`w-[72px] shrink-0 border-white/6 bg-black/30 ${id === 'B' ? 'border-r' : 'border-l'}`}>
+                    <div className="flex h-full flex-col">
+                        <div className="border-b border-white/6 px-3 py-3 text-center">
+                            <div className="font-mono text-[7px] font-black uppercase tracking-[0.2em] text-text-data">Pitch</div>
+                            <div className={`mt-2 font-mono text-[14px] font-bold tracking-tight ${Math.abs(pitchPercent) > 0.01 ? 'text-signal-nominal' : 'text-text-primary'}`}>
+                                {pitchPercent >= 0 ? '+' : ''}{pitchPercent.toFixed(1)}%
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={cyclePitchRange}
+                            className="border-b border-white/6 px-2 py-2 font-mono text-[8px] font-black uppercase tracking-[0.16em] text-text-secondary transition-all hover:bg-white/[0.03] hover:text-text-primary"
+                            title="Toggle pitch range"
+                        >
+                            Range {Math.round(pitchRange * 100)}%
+                        </button>
+
+                        <div className="relative flex-1 px-4 py-4">
+                            <div className="absolute inset-y-4 left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-white/8" />
+                            <div className="absolute inset-y-4 left-1/2 w-10 -translate-x-1/2">
+                                <div className="flex h-full flex-col justify-between">
+                                    {[...Array(11)].map((_, index) => (
+                                        <div key={index} className={`h-[1px] ${index === 5 ? 'w-10 bg-white/16' : 'w-5 bg-white/8'} ${id === 'B' ? '' : 'self-end'}`} />
+                                    ))}
+                                </div>
+                            </div>
+                            <div
+                                className={`tactile-fader-cap absolute left-2 right-2 z-10 ${!track ? 'opacity-45' : ''}`}
+                                style={{
+                                    top: `calc(1rem + ${0.5 - pitch * 0.5} * (100% - 2rem))`,
+                                    transform: 'translateY(-50%)',
+                                }}
+                            />
+                            <div
+                                onMouseDown={handlePitchMouseDown}
+                                onDoubleClick={() => dispatch({ type: 'SET_PITCH', deckId: id, value: 0 })}
+                                className={`absolute inset-0 ${track ? 'cursor-ns-resize' : 'pointer-events-none'}`}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 border-t border-white/6">
+                            <button
+                                className="border-r border-white/6 px-2 py-3 font-mono text-[10px] font-black text-text-secondary transition-all hover:bg-white/[0.03] hover:text-text-primary disabled:opacity-30"
+                                disabled={!track}
+                                onClick={() => dispatch({ type: 'SET_PITCH', deckId: id, value: Math.max(-1, pitch - 0.005) })}
+                            >
+                                -
+                            </button>
+                            <button
+                                className="px-2 py-3 font-mono text-[10px] font-black text-text-secondary transition-all hover:bg-white/[0.03] hover:text-text-primary disabled:opacity-30"
+                                disabled={!track}
+                                onClick={() => dispatch({ type: 'SET_PITCH', deckId: id, value: Math.min(1, pitch + 0.005) })}
                             >
                                 +
                             </button>
                         </div>
                     </div>
                 </div>
-
-                {/* Track Overview */}
-                <div className="flex flex-col gap-1">
-                    <TrackOverview
-                        deckId={id}
-                        waveformData={waveformData}
-                        progress={progress}
-                        duration={duration}
-                        cuePoints={cuePoints}
-                        dispatch={dispatch}
-                        activeColor={activeColor}
-                    />
-                    <div className="flex gap-1">
-                        <button
-                            disabled={!canTransport}
-                            onClick={() => dispatch({ type: 'BEAT_JUMP', deckId: id, beats: -8 })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-1 font-mono text-[9px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ◀◀
-                        </button>
-                        <button
-                            disabled={!canTransport}
-                            onClick={() => dispatch({ type: 'BEAT_JUMP', deckId: id, beats: 8 })}
-                            className="flex flex-1 items-center justify-center rounded-btn-sm border border-white/10 bg-black/30 py-1 font-mono text-[9px] text-text-data transition-all hover:border-white/20 hover:text-text-primary disabled:opacity-35"
-                        >
-                            ▶▶
-                        </button>
-                    </div>
-                </div>
             </div>
         </div>
     );
 };
+
+export default Deck;
